@@ -73,7 +73,6 @@ import org.apache.druid.timeline.SegmentId;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -82,8 +81,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -117,9 +119,8 @@ public class DruidSchema extends AbstractSchema
 
   // DataSource -> Segment -> AvailableSegmentMetadata(contains RowSignature) for that segment.
   // Use TreeMap for segments so they are merged in deterministic order, from older to newer.
-  @GuardedBy("lock")
-  private final Map<String, TreeMap<SegmentId, AvailableSegmentMetadata>> segmentMetadataInfo = new HashMap<>();
-  private int totalSegments = 0;
+  private final ConcurrentMap<String, ConcurrentNavigableMap<SegmentId, AvailableSegmentMetadata>> segmentMetadataInfo = new ConcurrentHashMap<>();
+  private final AtomicInteger totalSegments = new AtomicInteger(0);
 
   // All mutable segments.
   @GuardedBy("lock")
@@ -431,7 +432,7 @@ public class DruidSchema extends AbstractSchema
       final Map<SegmentId, AvailableSegmentMetadata> dataSourceSegments =
           segmentMetadataInfo.get(segment.getDataSource());
       if (dataSourceSegments.remove(segment.getId()) != null) {
-        totalSegments--;
+        totalSegments.decrementAndGet();
       }
 
       if (dataSourceSegments.isEmpty()) {
@@ -605,12 +606,12 @@ public class DruidSchema extends AbstractSchema
   void setAvailableSegmentMetadata(final SegmentId segmentId, final AvailableSegmentMetadata availableSegmentMetadata)
   {
     synchronized (lock) {
-      TreeMap<SegmentId, AvailableSegmentMetadata> dataSourceSegments = segmentMetadataInfo.computeIfAbsent(
+      ConcurrentNavigableMap<SegmentId, AvailableSegmentMetadata> dataSourceSegments = segmentMetadataInfo.computeIfAbsent(
           segmentId.getDataSource(),
-          x -> new TreeMap<>(SEGMENT_ORDER)
+          key -> new ConcurrentSkipListMap<>(SEGMENT_ORDER)
       );
       if (dataSourceSegments.put(segmentId, availableSegmentMetadata) == null) {
-        totalSegments++;
+        totalSegments.incrementAndGet();
       }
     }
   }
@@ -716,17 +717,20 @@ public class DruidSchema extends AbstractSchema
 
   Map<SegmentId, AvailableSegmentMetadata> getSegmentMetadataSnapshot()
   {
-    final Map<SegmentId, AvailableSegmentMetadata> segmentMetadata = new HashMap<>();
-    synchronized (lock) {
-      for (TreeMap<SegmentId, AvailableSegmentMetadata> val : segmentMetadataInfo.values()) {
-        segmentMetadata.putAll(val);
-      }
-    }
-    return segmentMetadata;
+    int size = totalSegments.get();
+    return segmentMetadataInfo.values()
+        .stream()
+        .map(Map::entrySet)
+        .flatMap(Set::stream)
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            Map.Entry::getValue,
+            (availSmd1, availSmd2) -> availSmd2,
+            () -> Maps.newHashMapWithExpectedSize(size)));
   }
 
   int getTotalSegments()
   {
-    return totalSegments;
+    return totalSegments.get();
   }
 }
