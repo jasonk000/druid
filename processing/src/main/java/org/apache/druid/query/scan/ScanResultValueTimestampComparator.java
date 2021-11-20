@@ -19,9 +19,14 @@
 
 package org.apache.druid.query.scan;
 
+import com.google.common.base.Preconditions;
 import com.google.common.primitives.Longs;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
+import org.apache.druid.segment.column.ColumnHolder;
 
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * This comparator class supports comparisons of ScanResultValues based on the timestamp of their first event.  Since
@@ -33,10 +38,18 @@ import java.util.Comparator;
 public class ScanResultValueTimestampComparator implements Comparator<ScanResultValue>
 {
   private final ScanQuery scanQuery;
+  private final List<OrderByColumnSpec> orderBy;
+  private final String TIME = ColumnHolder.TIME_COLUMN_NAME;
 
   public ScanResultValueTimestampComparator(ScanQuery scanQuery)
   {
     this.scanQuery = scanQuery;
+    Preconditions.checkNotNull(scanQuery.getOrderBy(), "getOrderBy");
+    this.orderBy = scanQuery.getOrderBy();
+    Preconditions.checkArgument(orderBy.size() == 1, "orderBy size should be one");
+    Preconditions.checkNotNull(
+        OrderByColumnSpec.getOrderByForDimName(orderBy, TIME),
+        "orderBy should have time column only");
   }
 
   @Override
@@ -45,7 +58,7 @@ public class ScanResultValueTimestampComparator implements Comparator<ScanResult
     int comparison = Longs.compare(
         o1.getFirstEventTimestamp(scanQuery.getResultFormat()),
         o2.getFirstEventTimestamp(scanQuery.getResultFormat()));
-    if (scanQuery.getOrder().equals(ScanQuery.Order.ASCENDING)) {
+    if (OrderByColumnSpec.getOrderByForDimName(orderBy, TIME).getDirection() == Direction.ASCENDING) {
       return comparison;
     }
     return comparison * -1;

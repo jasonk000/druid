@@ -35,6 +35,7 @@ import org.apache.druid.query.QueryContexts;
 import org.apache.druid.query.QueryTimeoutException;
 import org.apache.druid.query.context.ResponseContext;
 import org.apache.druid.query.filter.Filter;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.segment.BaseObjectColumnValueSelector;
 import org.apache.druid.segment.Segment;
 import org.apache.druid.segment.StorageAdapter;
@@ -70,7 +71,7 @@ public class ScanQueryEngine
     final Object numScannedRows = responseContext.get(ResponseContext.Key.NUM_SCANNED_ROWS);
     if (numScannedRows != null) {
       long count = (long) numScannedRows;
-      if (count >= query.getScanRowsLimit() && query.getOrder().equals(ScanQuery.Order.NONE)) {
+      if (count >= query.getScanRowsLimit() && query.getOrderBy().isEmpty()) {
         return Sequences.empty();
       }
     }
@@ -124,6 +125,11 @@ public class ScanQueryEngine
 
     responseContext.add(ResponseContext.Key.NUM_SCANNED_ROWS, 0L);
     final long limit = calculateRemainingScanRowsLimit(query, responseContext);
+    final boolean isDescending = 
+        (!query.getOrderBy().isEmpty() &&
+          query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) ||
+        (query.getOrderBy().isEmpty() && query.isDescending());
+
     return Sequences.concat(
             adapter
                 .makeCursors(
@@ -131,8 +137,7 @@ public class ScanQueryEngine
                     intervals.get(0),
                     query.getVirtualColumns(),
                     Granularities.ALL,
-                    query.getOrder().equals(ScanQuery.Order.DESCENDING) ||
-                    (query.getOrder().equals(ScanQuery.Order.NONE) && query.isDescending()),
+                    isDescending,
                     null
                 )
                 .map(cursor -> new BaseSequence<>(
@@ -261,7 +266,7 @@ public class ScanQueryEngine
    */
   private long calculateRemainingScanRowsLimit(ScanQuery query, ResponseContext responseContext)
   {
-    if (query.getOrder().equals(ScanQuery.Order.NONE)) {
+    if (query.getOrderBy().isEmpty()) {
       return query.getScanRowsLimit() - (long) responseContext.get(ResponseContext.Key.NUM_SCANNED_ROWS);
     }
     return query.getScanRowsLimit();

@@ -31,9 +31,11 @@ import org.apache.druid.query.Druids;
 import org.apache.druid.query.QueryPlus;
 import org.apache.druid.query.QueryRunner;
 import org.apache.druid.query.QueryRunnerTestHelper;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.ResourceLimitExceededException;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.query.context.ResponseContext;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.LegacySegmentSpec;
 import org.apache.druid.query.spec.MultipleIntervalSegmentSpec;
 import org.apache.druid.query.spec.MultipleSpecificSegmentSpec;
@@ -96,14 +98,14 @@ public class ScanQueryRunnerFactoryTest
         final int batchSize,
         final long limit,
         final ScanQuery.ResultFormat resultFormat,
-        final ScanQuery.Order order
+        final Direction order
     )
     {
       this.numElements = numElements;
       this.query = Druids.newScanQueryBuilder()
                          .batchSize(batchSize)
                          .limit(limit)
-                         .order(order)
+                         .orderBy(QueryUtils.newOrderByTimeSpec(order))
                          .intervals(QueryRunnerTestHelper.FULL_ON_INTERVAL_SPEC)
                          .dataSource("some datasource")
                          .resultFormat(resultFormat)
@@ -121,9 +123,9 @@ public class ScanQueryRunnerFactoryTest
           ScanQuery.ResultFormat.RESULT_FORMAT_LIST,
           ScanQuery.ResultFormat.RESULT_FORMAT_COMPACTED_LIST
       );
-      List<ScanQuery.Order> order = ImmutableList.of(
-          ScanQuery.Order.ASCENDING,
-          ScanQuery.Order.DESCENDING
+      List<Direction> order = ImmutableList.of(
+          Direction.ASCENDING,
+          Direction.DESCENDING
       );
 
       return QueryRunnerTestHelper.cartesian(
@@ -152,7 +154,7 @@ public class ScanQueryRunnerFactoryTest
         } else if (o1 < o2) {
           retVal = -1;
         }
-        if (query.getOrder().equals(ScanQuery.Order.DESCENDING)) {
+        if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
           return retVal * -1;
         }
         return retVal;
@@ -205,7 +207,7 @@ public class ScanQueryRunnerFactoryTest
         scanResultValues3.add(ScanQueryTestHelper.generateScanResultValue(timestamp, resultFormat, 1));
       }
 
-      if (query.getOrder() == ScanQuery.Order.DESCENDING) {
+      if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
         Collections.reverse(scanResultValues1);
         Collections.reverse(scanResultValues2);
         Collections.reverse(scanResultValues3);
@@ -226,7 +228,7 @@ public class ScanQueryRunnerFactoryTest
 
       List<List<QueryRunner<ScanResultValue>>> groupedRunners = new ArrayList<>(2);
 
-      if (query.getOrder() == ScanQuery.Order.DESCENDING) {
+      if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
         groupedRunners.add(Arrays.asList(runnerSegment2Partition1, runnerSegment2Partition2));
         groupedRunners.add(Arrays.asList(runnerSegment1Partition1, runnerSegment1Partition2));
       } else {
@@ -241,7 +243,7 @@ public class ScanQueryRunnerFactoryTest
         } else if (o1 < o2) {
           retVal = -1;
         }
-        if (query.getOrder().equals(ScanQuery.Order.DESCENDING)) {
+        if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
           return retVal * -1;
         }
         return retVal;
@@ -273,7 +275,7 @@ public class ScanQueryRunnerFactoryTest
 
       // check ordering is correct
       for (int i = 1; i < output.size(); i++) {
-        if (query.getOrder().equals(ScanQuery.Order.DESCENDING)) {
+        if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
           Assert.assertTrue(output.get(i).getFirstEventTimestamp(resultFormat) <
                             output.get(i - 1).getFirstEventTimestamp(resultFormat));
         } else {
@@ -375,7 +377,7 @@ public class ScanQueryRunnerFactoryTest
                                      .collect(Collectors.toList())
                         )
                     )
-                    .order(ScanQuery.Order.ASCENDING)
+                    .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
                     .build()
           ),
           ResponseContext.createEmpty()

@@ -43,6 +43,7 @@ import org.apache.druid.query.QueryPlus;
 import org.apache.druid.query.QueryRunner;
 import org.apache.druid.query.QueryRunnerTestHelper;
 import org.apache.druid.query.QueryTimeoutException;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.TableDataSource;
 import org.apache.druid.query.context.DefaultResponseContext;
 import org.apache.druid.query.context.ResponseContext;
@@ -50,6 +51,7 @@ import org.apache.druid.query.expression.TestExprMacroTable;
 import org.apache.druid.query.extraction.MapLookupExtractor;
 import org.apache.druid.query.filter.AndDimFilter;
 import org.apache.druid.query.filter.SelectorDimFilter;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.lookup.LookupExtractionFn;
 import org.apache.druid.query.spec.LegacySegmentSpec;
 import org.apache.druid.query.spec.QuerySegmentSpec;
@@ -561,7 +563,7 @@ public class ScanQueryRunnerTest extends InitializedNullHandlingTest
               QueryRunnerTestHelper.INDEX_METRIC
           )
           .limit(limit)
-          .order(ScanQuery.Order.ASCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
           .context(ImmutableMap.of(ScanQuery.CTX_KEY_OUTERMOST, false))
           .build();
 
@@ -649,7 +651,7 @@ public class ScanQueryRunnerTest extends InitializedNullHandlingTest
               QueryRunnerTestHelper.INDEX_METRIC
           )
           .limit(limit)
-          .order(ScanQuery.Order.DESCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
           .build();
 
       Iterable<ScanResultValue> results = runner.run(QueryPlus.wrap(query)).toList();
@@ -760,7 +762,7 @@ public class ScanQueryRunnerTest extends InitializedNullHandlingTest
               QueryRunnerTestHelper.INDEX_METRIC
           )
           .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_COMPACTED_LIST)
-          .order(ScanQuery.Order.ASCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
           .limit(limit)
           .build();
 
@@ -849,7 +851,7 @@ public class ScanQueryRunnerTest extends InitializedNullHandlingTest
               QueryRunnerTestHelper.INDEX_METRIC
           )
           .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_COMPACTED_LIST)
-          .order(ScanQuery.Order.DESCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
           .context(ImmutableMap.of(ScanQuery.CTX_KEY_OUTERMOST, false))
           .limit(limit)
           .build();

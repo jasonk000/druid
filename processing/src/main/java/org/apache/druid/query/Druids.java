@@ -35,6 +35,7 @@ import org.apache.druid.query.dimension.DimensionSpec;
 import org.apache.druid.query.filter.DimFilter;
 import org.apache.druid.query.filter.InDimFilter;
 import org.apache.druid.query.filter.SelectorDimFilter;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
 import org.apache.druid.query.metadata.metadata.ColumnIncluderator;
 import org.apache.druid.query.metadata.metadata.SegmentMetadataQuery;
 import org.apache.druid.query.scan.ScanQuery;
@@ -792,10 +793,10 @@ public class Druids
     private int batchSize;
     private long offset;
     private long limit;
+    private List<OrderByColumnSpec> orderBy;
     private DimFilter dimFilter;
     private List<String> columns;
     private Boolean legacy;
-    private ScanQuery.Order order;
 
     public ScanQueryBuilder()
     {
@@ -805,12 +806,12 @@ public class Druids
       context = null;
       resultFormat = null;
       batchSize = 0;
-      offset = 0;
-      limit = 0;
+      offset = 0L;
+      limit = 0L;
+      orderBy = Collections.emptyList();
       dimFilter = null;
       columns = new ArrayList<>();
       legacy = null;
-      order = null;
     }
 
     public ScanQuery build()
@@ -823,7 +824,7 @@ public class Druids
           batchSize,
           offset,
           limit,
-          order,
+          orderBy,
           dimFilter,
           columns,
           legacy,
@@ -841,11 +842,11 @@ public class Druids
           .batchSize(query.getBatchSize())
           .offset(query.getScanRowsOffset())
           .limit(query.getScanRowsLimit())
+          .orderBy(query.getOrderBy())
           .filters(query.getFilter())
           .columns(query.getColumns())
           .legacy(query.isLegacy())
-          .context(query.getContext())
-          .order(query.getOrder());
+          .context(query.getContext());
     }
 
     public ScanQueryBuilder dataSource(String ds)
@@ -931,11 +932,12 @@ public class Druids
       return this;
     }
 
-    public ScanQueryBuilder order(ScanQuery.Order order)
+    public ScanQueryBuilder orderBy(List<OrderByColumnSpec> o)
     {
-      this.order = order;
+      orderBy = o;
       return this;
     }
+
   }
 
   public static ScanQueryBuilder newScanQueryBuilder()

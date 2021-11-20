@@ -25,7 +25,9 @@ import org.apache.druid.java.util.common.guava.Sequences;
 import org.apache.druid.query.Druids;
 import org.apache.druid.query.QueryPlus;
 import org.apache.druid.query.QueryRunnerTestHelper;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.context.ResponseContext;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -104,7 +106,7 @@ public class ScanQueryLimitRowIteratorTest
   {
     ScanQuery query = Druids.newScanQueryBuilder()
                             .limit(limit)
-                            .order(ScanQuery.Order.NONE)
+                            .orderBy(QueryUtils.newOrderByTimeSpec(null))
                             .dataSource("some datasource")
                             .batchSize(batchSize)
                             .intervals(QueryRunnerTestHelper.FULL_ON_INTERVAL_SPEC)
@@ -145,7 +147,7 @@ public class ScanQueryLimitRowIteratorTest
   {
     ScanQuery query = Druids.newScanQueryBuilder()
                             .limit(limit)
-                            .order(ScanQuery.Order.DESCENDING)
+                            .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
                             .dataSource("some datasource")
                             .batchSize(batchSize)
                             .intervals(QueryRunnerTestHelper.FULL_ON_INTERVAL_SPEC)
@@ -184,7 +186,7 @@ public class ScanQueryLimitRowIteratorTest
   {
     ScanQuery query = Druids.newScanQueryBuilder()
                             .limit(limit)
-                            .order(ScanQuery.Order.DESCENDING)
+                            .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
                             .dataSource("some datasource")
                             .batchSize(batchSize)
                             .intervals(QueryRunnerTestHelper.FULL_ON_INTERVAL_SPEC)

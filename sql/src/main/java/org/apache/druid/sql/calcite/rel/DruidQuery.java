@@ -87,6 +87,7 @@ import org.apache.druid.sql.calcite.table.RowSignatures;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1103,11 +1104,20 @@ public class DruidQuery
     final DataSource newDataSource = dataSourceFiltrationPair.lhs;
     final Filtration filtration = dataSourceFiltrationPair.rhs;
 
-    final ScanQuery.Order order;
     long scanOffset = 0L;
     long scanLimit = 0L;
 
     if (sorting != null) {
+      // precheck that we can accept it
+      if (sorting.getOrderBys() != null) {
+        if (sorting.getOrderBys().size() > 1) {
+          return null;
+        }
+        if (sorting.getOrderBys().size() == 1 && !sorting.getOrderBys().get(0).getDimension().equals(ColumnHolder.TIME_COLUMN_NAME)) {
+          return null;
+        }
+      }
+
       scanOffset = sorting.getOffsetLimit().getOffset();
 
       if (sorting.getOffsetLimit().hasLimit()) {
@@ -1120,29 +1130,12 @@ public class DruidQuery
 
         scanLimit = limit;
       }
-
-      final Sorting.SortKind sortKind = sorting.getSortKind(ColumnHolder.TIME_COLUMN_NAME);
-
-      if (sortKind == Sorting.SortKind.UNORDERED) {
-        order = ScanQuery.Order.NONE;
-      } else if (sortKind == Sorting.SortKind.TIME_ASCENDING) {
-        order = ScanQuery.Order.ASCENDING;
-      } else if (sortKind == Sorting.SortKind.TIME_DESCENDING) {
-        order = ScanQuery.Order.DESCENDING;
-      } else {
-        assert sortKind == Sorting.SortKind.NON_TIME;
-
-        // Scan cannot ORDER BY non-time columns.
-        return null;
-      }
-    } else {
-      order = ScanQuery.Order.NONE;
     }
 
     // Compute the list of columns to select.
     final Set<String> columns = new HashSet<>(outputRowSignature.getColumnNames());
 
-    if (order != ScanQuery.Order.NONE) {
+    if (sorting != null && sorting.getOrderBys() != null && !sorting.getOrderBys().isEmpty()) {
       columns.add(ColumnHolder.TIME_COLUMN_NAME);
     }
 
@@ -1154,7 +1147,7 @@ public class DruidQuery
         0,
         scanOffset,
         scanLimit,
-        order,
+        (sorting == null || sorting.getOrderBys() == null) ? Collections.emptyList() : sorting.getOrderBys(),
         filtration.getDimFilter(),
         Ordering.natural().sortedCopy(columns),
         false,

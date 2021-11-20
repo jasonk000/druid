@@ -646,7 +646,7 @@ public class CalciteTests
       ),
       createRow(
           ImmutableMap.<String, Object>builder()
-              .put("timestamp", 1576306800000L)
+              .put("timestamp", 1576306800001L)
               .put("metFloatZipf", 25.0)
               .put("dimMultivalEnumerated2", Arrays.asList("Xylophone", null, "Corundum"))
               .put("metLongUniform", 252)

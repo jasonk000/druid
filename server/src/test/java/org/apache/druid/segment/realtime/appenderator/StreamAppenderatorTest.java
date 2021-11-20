@@ -34,10 +34,12 @@ import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.query.Druids;
 import org.apache.druid.query.QueryPlus;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.Result;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.query.aggregation.LongSumAggregatorFactory;
 import org.apache.druid.query.context.ResponseContext;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.scan.ScanQuery;
 import org.apache.druid.query.scan.ScanResultValue;
 import org.apache.druid.query.spec.MultipleSpecificSegmentSpec;
@@ -1171,7 +1173,7 @@ public class StreamAppenderatorTest extends InitializedNullHandlingTest
                                              )
                                          )
                                      )
-                                     .order(ScanQuery.Order.ASCENDING)
+                                     .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
                                      .batchSize(10)
                                      .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_COMPACTED_LIST)
                                      .build();

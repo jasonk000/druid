@@ -43,6 +43,7 @@ import org.apache.druid.query.ResourceLimitExceededException;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.query.SinkQueryRunners;
 import org.apache.druid.query.context.ResponseContext;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.MultipleSpecificSegmentSpec;
 import org.apache.druid.query.spec.QuerySegmentSpec;
 import org.apache.druid.query.spec.SpecificSegmentSpec;
@@ -96,7 +97,7 @@ public class ScanQueryRunnerFactory implements QueryRunnerFactory<ScanResultValu
       final long timeoutAt = System.currentTimeMillis() + QueryContexts.getTimeout(queryPlus.getQuery());
       responseContext.put(ResponseContext.Key.TIMEOUT_AT, timeoutAt);
 
-      if (query.getOrder().equals(ScanQuery.Order.NONE)) {
+      if (query.getOrderBy().isEmpty()) {
         // Use normal strategy
         Sequence<ScanResultValue> returnedRows = Sequences.concat(
             Sequences.map(
@@ -113,7 +114,7 @@ public class ScanQueryRunnerFactory implements QueryRunnerFactory<ScanResultValu
         List<Interval> intervalsOrdered = getIntervalsFromSpecificQuerySpec(query.getQuerySegmentSpec());
         List<QueryRunner<ScanResultValue>> queryRunnersOrdered = Lists.newArrayList(queryRunners);
 
-        if (query.getOrder().equals(ScanQuery.Order.DESCENDING)) {
+        if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
           intervalsOrdered = Lists.reverse(intervalsOrdered);
           queryRunnersOrdered = Lists.reverse(queryRunnersOrdered);
         }

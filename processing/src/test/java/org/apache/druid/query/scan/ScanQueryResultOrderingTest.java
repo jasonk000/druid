@@ -34,7 +34,9 @@ import org.apache.druid.query.DefaultGenericQueryMetricsFactory;
 import org.apache.druid.query.Druids;
 import org.apache.druid.query.QueryPlus;
 import org.apache.druid.query.QueryRunner;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.context.ResponseContext;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.MultipleIntervalSegmentSpec;
 import org.apache.druid.query.spec.MultipleSpecificSegmentSpec;
 import org.apache.druid.segment.RowAdapter;
@@ -216,7 +218,7 @@ public class ScanQueryResultOrderingTest
               .dataSource("ds")
               .intervals(new MultipleIntervalSegmentSpec(Collections.singletonList(Intervals.of("2000/P1D"))))
               .columns(ColumnHolder.TIME_COLUMN_NAME, ID_COLUMN)
-              .order(ScanQuery.Order.NONE)
+              .orderBy(QueryUtils.newOrderByTimeSpec(null))
               .build(),
         ImmutableList.of(
             101,
@@ -250,7 +252,7 @@ public class ScanQueryResultOrderingTest
               .dataSource("ds")
               .intervals(new MultipleIntervalSegmentSpec(Collections.singletonList(Intervals.of("2000/P1D"))))
               .columns(ColumnHolder.TIME_COLUMN_NAME, ID_COLUMN)
-              .order(ScanQuery.Order.ASCENDING)
+              .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
               .build(),
         ImmutableList.of(
             101,
@@ -284,7 +286,7 @@ public class ScanQueryResultOrderingTest
               .dataSource("ds")
               .intervals(new MultipleIntervalSegmentSpec(Collections.singletonList(Intervals.of("2000/P1D"))))
               .columns(ColumnHolder.TIME_COLUMN_NAME, ID_COLUMN)
-              .order(ScanQuery.Order.DESCENDING)
+              .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
               .build(),
         ImmutableList.of(
             8,

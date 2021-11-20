@@ -26,6 +26,9 @@ import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.guava.Sequence;
 import org.apache.druid.java.util.common.guava.Sequences;
 import org.apache.druid.query.Druids;
+import org.apache.druid.query.QueryUtils;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.MultipleIntervalSegmentSpec;
 import org.apache.druid.query.spec.QuerySegmentSpec;
 import org.apache.druid.segment.column.ColumnHolder;
@@ -37,8 +40,8 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class ScanQueryTest
@@ -57,10 +60,8 @@ public class ScanQueryTest
         )
     );
 
-    ArrayList<HashMap<String, Object>> events1 = new ArrayList<>();
-    HashMap<String, Object> event1 = new HashMap<>();
-    event1.put(ColumnHolder.TIME_COLUMN_NAME, new Long(42));
-    events1.add(event1);
+    ArrayList<Map<String, Object>> events1 = new ArrayList<>();
+    events1.add(Collections.singletonMap(ColumnHolder.TIME_COLUMN_NAME, new Long(42)));
 
     s1 = new ScanResultValue(
         "segmentId",
@@ -68,10 +69,8 @@ public class ScanQueryTest
         events1
     );
 
-    ArrayList<HashMap<String, Object>> events2 = new ArrayList<>();
-    HashMap<String, Object> event2 = new HashMap<>();
-    event2.put(ColumnHolder.TIME_COLUMN_NAME, new Long(43));
-    events2.add(event2);
+    ArrayList<Map<String, Object>> events2 = new ArrayList<>();
+    events2.add(Collections.singletonMap(ColumnHolder.TIME_COLUMN_NAME, new Long(43)));
 
     s2 = new ScanResultValue(
         "segmentId",
@@ -80,10 +79,8 @@ public class ScanQueryTest
     );
 
     // ScanResultValue s3 has no time column
-    ArrayList<HashMap<String, Object>> events3 = new ArrayList<>();
-    HashMap<String, Object> event3 = new HashMap<>();
-    event3.put("yah", "yeet");
-    events3.add(event3);
+    ArrayList<Map<String, Object>> events3 = new ArrayList<>();
+    events3.add(Collections.singletonMap("yah", "yeet"));
 
     s3 = new ScanResultValue(
         "segmentId",
@@ -96,7 +93,7 @@ public class ScanQueryTest
   public void testAscendingScanQueryWithInvalidColumns()
   {
     Druids.newScanQueryBuilder()
-          .order(ScanQuery.Order.ASCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
           .columns(ImmutableList.of("not time", "also not time"))
           .dataSource("source")
           .intervals(intervalSpec)
@@ -107,7 +104,7 @@ public class ScanQueryTest
   public void testDescendingScanQueryWithInvalidColumns()
   {
     Druids.newScanQueryBuilder()
-          .order(ScanQuery.Order.DESCENDING)
+          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
           .columns(ImmutableList.of("not time", "also not time"))
           .dataSource("source")
           .intervals(intervalSpec)
@@ -118,63 +115,65 @@ public class ScanQueryTest
   @Test
   public void testValidScanQueryInitialization()
   {
-    List<ScanQuery.Order> nonOrderedOrders = Arrays.asList(null, ScanQuery.Order.NONE);
+    List<List<OrderByColumnSpec>> nonOrderedOrders = Arrays.asList(null, QueryUtils.newOrderByTimeSpec(null));
 
-    for (ScanQuery.Order order : nonOrderedOrders) {
+    for (List<OrderByColumnSpec> orderBy : nonOrderedOrders) {
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns(ImmutableList.of("not time"))
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns(ImmutableList.of())
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns(ImmutableList.of("__time"))
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
     }
 
-    Set<ScanQuery.Order> orderedOrders = ImmutableSet.of(ScanQuery.Order.ASCENDING, ScanQuery.Order.DESCENDING);
+    Set<List<OrderByColumnSpec>> orderedOrders = ImmutableSet.of(
+        QueryUtils.newOrderByTimeSpec(Direction.ASCENDING),
+        QueryUtils.newOrderByTimeSpec(Direction.DESCENDING));
 
-    for (ScanQuery.Order order : orderedOrders) {
+    for (List<OrderByColumnSpec> orderBy : orderedOrders) {
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns((List<String>) null)
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns(ImmutableList.of())
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .dataSource("source")
             .intervals(intervalSpec)
             .build();
 
       Druids.newScanQueryBuilder()
-            .order(order)
+            .orderBy(orderBy)
             .columns(ImmutableList.of("__time", "col2"))
             .dataSource("source")
             .intervals(intervalSpec)
@@ -188,7 +187,7 @@ public class ScanQueryTest
   {
     // Should be able to handle merging s1, s2, s3
     ScanQuery noOrderScan = Druids.newScanQueryBuilder()
-                                  .order(ScanQuery.Order.NONE)
+                                  .orderBy(QueryUtils.newOrderByTimeSpec(null))
                                   .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
                                   .dataSource("some src")
                                   .intervals(intervalSpec)
@@ -196,7 +195,7 @@ public class ScanQueryTest
 
     // Should only handle s1 and s2
     ScanQuery descendingOrderScan = Druids.newScanQueryBuilder()
-                                          .order(ScanQuery.Order.DESCENDING)
+                                          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
                                           .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
                                           .dataSource("some src")
                                           .intervals(intervalSpec)
@@ -204,7 +203,7 @@ public class ScanQueryTest
 
     // Should only handle s1 and s2
     ScanQuery ascendingOrderScan = Druids.newScanQueryBuilder()
-                                         .order(ScanQuery.Order.ASCENDING)
+                                         .orderBy(QueryUtils.newOrderByTimeSpec(Direction.ASCENDING))
                                          .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
                                          .dataSource("some src")
                                          .intervals(intervalSpec)
@@ -253,7 +252,7 @@ public class ScanQueryTest
   public void testTimeOrderingWithoutTimeColumn()
   {
     ScanQuery descendingOrderScan = Druids.newScanQueryBuilder()
-                                          .order(ScanQuery.Order.DESCENDING)
+                                          .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
                                           .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
                                           .dataSource("some src")
                                           .intervals(intervalSpec)
@@ -275,7 +274,7 @@ public class ScanQueryTest
   {
     final ScanQuery query =
         Druids.newScanQueryBuilder()
-              .order(ScanQuery.Order.DESCENDING)
+              .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
               .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
               .dataSource("some src")
               .intervals(intervalSpec)
@@ -289,7 +288,7 @@ public class ScanQueryTest
   {
     final ScanQuery query =
         Druids.newScanQueryBuilder()
-              .order(ScanQuery.Order.DESCENDING)
+              .orderBy(QueryUtils.newOrderByTimeSpec(Direction.DESCENDING))
               .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
               .dataSource("some src")
               .intervals(intervalSpec)

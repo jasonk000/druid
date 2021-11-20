@@ -24,6 +24,7 @@ import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.query.Query;
 import org.apache.druid.query.QueryRunnerTestHelper;
+import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.TableDataSource;
 import org.apache.druid.query.spec.LegacySegmentSpec;
 import org.apache.druid.segment.VirtualColumns;
@@ -54,7 +55,7 @@ public class ScanQuerySpecTest
         + "\"resultFormat\":\"list\","
         + "\"batchSize\":20480,"
         + "\"limit\":3,"
-        + "\"order\":\"none\","
+        + "\"orderBy\":[],"
         + "\"filter\":null,"
         + "\"columns\":[\"market\",\"quality\",\"index\"],"
         + "\"legacy\":null,"
@@ -70,7 +71,7 @@ public class ScanQuerySpecTest
         0,
         0,
         3,
-        ScanQuery.Order.NONE,
+        QueryUtils.newOrderByTimeSpec(null),
         null,
         Arrays.asList("market", "quality", "index"),
         null,
@@ -94,7 +95,7 @@ public class ScanQuerySpecTest
         0,
         1,
         3,
-        ScanQuery.Order.NONE,
+        QueryUtils.newOrderByTimeSpec(null),
         null,
         Arrays.asList("market", "quality", "index"),
         null,

@@ -26,7 +26,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Ordering;
-import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.UOE;
 import org.apache.druid.query.BaseQuery;
 import org.apache.druid.query.DataSource;
@@ -34,6 +33,8 @@ import org.apache.druid.query.Druids;
 import org.apache.druid.query.Queries;
 import org.apache.druid.query.Query;
 import org.apache.druid.query.filter.DimFilter;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.QuerySegmentSpec;
 import org.apache.druid.segment.VirtualColumns;
 import org.apache.druid.segment.column.ColumnHolder;
@@ -86,26 +87,6 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     }
   }
 
-  public enum Order
-  {
-    ASCENDING,
-    DESCENDING,
-    NONE;
-
-    @JsonValue
-    @Override
-    public String toString()
-    {
-      return StringUtils.toLowerCase(this.name());
-    }
-
-    @JsonCreator
-    public static Order fromString(String name)
-    {
-      return valueOf(StringUtils.toUpperCase(name));
-    }
-  }
-
   /**
    * This context flag corresponds to whether the query is running on the "outermost" process (i.e. the process
    * the query is sent to).
@@ -120,7 +101,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
   private final DimFilter dimFilter;
   private final List<String> columns;
   private final Boolean legacy;
-  private final Order order;
+  private final List<OrderByColumnSpec> orderBy;
   private final Integer maxRowsQueuedForOrdering;
   private final Integer maxSegmentPartitionsOrderedInMemory;
 
@@ -133,7 +114,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
       @JsonProperty("batchSize") int batchSize,
       @JsonProperty("offset") long scanRowsOffset,
       @JsonProperty("limit") long scanRowsLimit,
-      @JsonProperty("order") Order order,
+      @JsonProperty("orderBy") List<OrderByColumnSpec> orderBy,
       @JsonProperty("filter") DimFilter dimFilter,
       @JsonProperty("columns") List<String> columns,
       @JsonProperty("legacy") Boolean legacy,
@@ -161,8 +142,13 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     this.dimFilter = dimFilter;
     this.columns = columns;
     this.legacy = legacy;
-    this.order = (order == null) ? Order.NONE : order;
-    if (this.order != Order.NONE) {
+    this.orderBy = (orderBy == null) ? Collections.emptyList() : orderBy;
+    boolean hasTimeColumn = OrderByColumnSpec.getOrderByForDimName(this.orderBy, ColumnHolder.TIME_COLUMN_NAME) != null;
+    Preconditions.checkArgument(
+        this.orderBy.isEmpty() || (this.orderBy.size() == 1 && hasTimeColumn),
+        "Only support by __time column is supported."
+    );
+    if (!this.orderBy.isEmpty()) {
       Preconditions.checkArgument(
           columns == null || columns.size() == 0 || columns.contains(ColumnHolder.TIME_COLUMN_NAME),
           "The __time column must be selected if the results are time-ordered."
@@ -245,10 +231,10 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     return scanRowsLimit != Long.MAX_VALUE;
   }
 
-  @JsonProperty
-  public Order getOrder()
+  @JsonProperty("orderBy")
+  public List<OrderByColumnSpec> getOrderBy()
   {
-    return order;
+    return orderBy;
   }
 
   @Nullable
@@ -302,12 +288,12 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
   @Override
   public Ordering<ScanResultValue> getResultOrdering()
   {
-    if (order == Order.NONE) {
+    if (orderBy.isEmpty()) {
       return Ordering.natural();
     }
     return Ordering.from(
         new ScanResultValueTimestampComparator(this).thenComparing(
-            order == Order.ASCENDING
+            (orderBy.get(0).getDirection() == Direction.ASCENDING)
             ? Comparator.naturalOrder()
             : Comparator.<ScanResultValue>naturalOrder().reversed()
         )
@@ -385,6 +371,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
            Objects.equals(virtualColumns, scanQuery.virtualColumns) &&
            Objects.equals(resultFormat, scanQuery.resultFormat) &&
            Objects.equals(dimFilter, scanQuery.dimFilter) &&
+           Objects.equals(orderBy, scanQuery.orderBy) &&
            Objects.equals(columns, scanQuery.columns);
   }
 
@@ -398,6 +385,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
         batchSize,
         scanRowsOffset,
         scanRowsLimit,
+        orderBy,
         dimFilter,
         columns,
         legacy
@@ -415,6 +403,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
            ", batchSize=" + batchSize +
            ", offset=" + scanRowsOffset +
            ", limit=" + scanRowsLimit +
+           ", orderBy=" + orderBy.toString() +
            ", dimFilter=" + dimFilter +
            ", columns=" + columns +
            ", legacy=" + legacy +
