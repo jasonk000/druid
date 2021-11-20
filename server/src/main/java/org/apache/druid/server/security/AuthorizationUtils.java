@@ -32,6 +32,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Static utility functions for performing authorization checks.
@@ -259,40 +260,48 @@ public class AuthorizationUtils
       final AuthorizerMapper authorizerMapper
   )
   {
+    final Predicate<ResType> pred = createPredicateForAuthorizedResources(authenticationResult, resourceActionGenerator, authorizerMapper);
+
+    final Iterable<ResType> filteredResources = Iterables.filter(resources, r -> pred.test(r));
+
+    return filteredResources;
+  }
+
+  public static <ResType> Predicate<ResType> createPredicateForAuthorizedResources(
+      final AuthenticationResult authenticationResult,
+      final Function<? super ResType, Iterable<ResourceAction>> resourceActionGenerator,
+      final AuthorizerMapper authorizerMapper
+  )
+  {
     final Authorizer authorizer = authorizerMapper.getAuthorizer(authenticationResult.getAuthorizerName());
     if (authorizer == null) {
       throw new ISE("No authorizer found with name: [%s].", authenticationResult.getAuthorizerName());
     }
 
+    // this is a single threaded filter
     final Map<ResourceAction, Access> resultCache = new HashMap<>();
-    final Iterable<ResType> filteredResources = Iterables.filter(
-        resources,
-        resource -> {
-          final Iterable<ResourceAction> resourceActions = resourceActionGenerator.apply(resource);
-          if (resourceActions == null) {
-            return false;
-          }
-          if (authorizer instanceof AllowAllAuthorizer) {
-            return true;
-          }
-          for (ResourceAction resourceAction : resourceActions) {
-            Access access = resultCache.computeIfAbsent(
-                resourceAction,
-                ra -> authorizer.authorize(
-                    authenticationResult,
-                    ra.getResource(),
-                    ra.getAction()
-                )
-            );
-            if (!access.isAllowed()) {
-              return false;
-            }
-          }
-          return true;
-        }
-    );
 
-    return filteredResources;
+    return (ResType resource) -> {
+      final Iterable<ResourceAction> resourceActions = resourceActionGenerator.apply(resource);
+      if (resourceActions == null) {
+        return false;
+      }
+
+      for (ResourceAction resourceAction : resourceActions) {
+        Access access = resultCache.computeIfAbsent(
+            resourceAction,
+            ra -> authorizer.authorize(
+                authenticationResult,
+                ra.getResource(),
+                ra.getAction()
+            )
+        );
+        if (!access.isAllowed()) {
+          return false;
+        }
+      }
+      return true;
+    };
   }
 
   /**
