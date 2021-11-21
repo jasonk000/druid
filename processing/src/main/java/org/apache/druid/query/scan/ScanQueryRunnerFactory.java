@@ -42,6 +42,7 @@ import org.apache.druid.query.QueryToolChest;
 import org.apache.druid.query.ResourceLimitExceededException;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.query.SinkQueryRunners;
+import org.apache.druid.query.VirtualDataSource;
 import org.apache.druid.query.context.ResponseContext;
 import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.MultipleSpecificSegmentSpec;
@@ -111,7 +112,7 @@ public class ScanQueryRunnerFactory implements QueryRunnerFactory<ScanResultValu
           return returnedRows;
         }
       } else {
-        List<Interval> intervalsOrdered = getIntervalsFromSpecificQuerySpec(query.getQuerySegmentSpec());
+        List<Interval> intervalsOrdered = getIntervalsFromQuery(query);
         List<QueryRunner<ScanResultValue>> queryRunnersOrdered = Lists.newArrayList(queryRunners);
 
         if (query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) {
@@ -275,6 +276,17 @@ public class ScanQueryRunnerFactory implements QueryRunnerFactory<ScanResultValu
     }
   }
 
+  List<Interval> getIntervalsFromQuery(ScanQuery query)
+  {
+    // VirtualDataSource provides a MultipleIntervalSegmentSpec, which is not a SpecificQuery spec
+    if (query.getDataSource() instanceof VirtualDataSource) {
+      return query.getQuerySegmentSpec().getIntervals();
+    }
+
+    // otherwise, rely on the segment specifics
+    return getIntervalsFromSpecificQuerySpec(query.getQuerySegmentSpec());
+  }
+
   @VisibleForTesting
   List<Interval> getIntervalsFromSpecificQuerySpec(QuerySegmentSpec spec)
   {
@@ -282,24 +294,24 @@ public class ScanQueryRunnerFactory implements QueryRunnerFactory<ScanResultValu
     // segment descriptors need to be present for a 1:1 matching of intervals with query runners.
     // The other types of segment spec condense the intervals (i.e. merge neighbouring intervals), eliminating
     // the 1:1 relationship between intervals and query runners.
-    List<Interval> descriptorsOrdered;
 
     if (spec instanceof MultipleSpecificSegmentSpec) {
       // Ascending time order for both descriptors and query runners by default
-      descriptorsOrdered = ((MultipleSpecificSegmentSpec) spec).getDescriptors()
+      return ((MultipleSpecificSegmentSpec) spec).getDescriptors()
                                                                .stream()
                                                                .map(SegmentDescriptor::getInterval)
                                                                .collect(Collectors.toList());
-    } else if (spec instanceof SpecificSegmentSpec) {
-      descriptorsOrdered = Collections.singletonList(((SpecificSegmentSpec) spec).getDescriptor().getInterval());
-    } else {
-      throw new UOE(
-          "Time-ordering on scan queries is only supported for queries with segment specs "
-          + "of type MultipleSpecificSegmentSpec or SpecificSegmentSpec...a [%s] was received instead.",
-          spec.getClass().getSimpleName()
-      );
     }
-    return descriptorsOrdered;
+    
+    if (spec instanceof SpecificSegmentSpec) {
+      return Collections.singletonList(((SpecificSegmentSpec) spec).getDescriptor().getInterval());
+    }
+
+    throw new UOE(
+        "Time-ordering on scan queries is only supported for queries with segment specs "
+        + "of type MultipleSpecificSegmentSpec or SpecificSegmentSpec...a [%s] was received instead.",
+        spec.getClass().getSimpleName()
+    );
   }
 
   @VisibleForTesting

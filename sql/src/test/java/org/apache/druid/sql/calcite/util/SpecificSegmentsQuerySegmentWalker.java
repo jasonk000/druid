@@ -30,6 +30,7 @@ import org.apache.druid.query.QueryRunner;
 import org.apache.druid.query.QueryRunnerFactoryConglomerate;
 import org.apache.druid.query.QuerySegmentWalker;
 import org.apache.druid.query.SegmentDescriptor;
+import org.apache.druid.query.VirtualDataSource;
 import org.apache.druid.query.lookup.LookupExtractorFactoryContainer;
 import org.apache.druid.query.lookup.LookupExtractorFactoryContainerProvider;
 import org.apache.druid.segment.InlineSegmentWrangler;
@@ -40,6 +41,7 @@ import org.apache.druid.segment.QueryableIndexSegment;
 import org.apache.druid.segment.ReferenceCountingSegment;
 import org.apache.druid.segment.Segment;
 import org.apache.druid.segment.SegmentWrangler;
+import org.apache.druid.segment.VirtualSegmentWrangler;
 import org.apache.druid.segment.join.JoinableFactory;
 import org.apache.druid.server.ClientQuerySegmentWalker;
 import org.apache.druid.server.QueryScheduler;
@@ -106,6 +108,7 @@ public class SpecificSegmentsQuerySegmentWalker implements QuerySegmentWalker, C
                 ImmutableMap.<Class<? extends DataSource>, SegmentWrangler>builder()
                     .put(InlineDataSource.class, new InlineSegmentWrangler())
                     .put(LookupDataSource.class, new LookupSegmentWrangler(lookupProvider))
+                    .put(VirtualDataSource.class, new VirtualSegmentWrangler())
                     .build()
             ),
             joinableFactoryToUse,

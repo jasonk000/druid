@@ -45,6 +45,7 @@ import org.apache.druid.query.filter.BoundDimFilter;
 import org.apache.druid.query.filter.DimFilter;
 import org.apache.druid.query.filter.SelectorDimFilter;
 import org.apache.druid.query.ordering.StringComparators;
+import org.apache.druid.query.scan.ScanQuery;
 import org.apache.druid.segment.column.ColumnType;
 import org.apache.druid.segment.column.RowSignature;
 import org.apache.druid.segment.join.JoinType;
@@ -205,6 +206,57 @@ public class DruidQueryTest
     Assert.assertEquals(dataSource, pair.lhs);
     Assert.assertEquals("dim-filter: " + pair.rhs.getDimFilter(), columnFilter, pair.rhs.getDimFilter());
     Assert.assertEquals(Collections.singletonList(interval), pair.rhs.getIntervals());
+  }
+
+  @Test
+  public void testScanQueryIfScanSupported()
+  {
+    DataSource dataSource = Mockito.mock(DataSource.class);
+
+    RelNode scanRel = Mockito.mock(RelNode.class);
+    RelOptPlanner relOptPlanner = Mockito.mock(RelOptPlanner.class);
+    RelOptCluster relOptCluster = Mockito.mock(RelOptCluster.class);
+    final RelDataTypeFactory typeFactory = new SqlTypeFactoryImpl(DruidTypeSystem.INSTANCE);
+    RexBuilder rexBuilder = new RexBuilder(typeFactory);
+    RelTraitSet relTraitSet = RelTraitSet.createEmpty();
+    Mockito.when(relOptCluster.getPlanner()).thenReturn(relOptPlanner);
+    Mockito.when(relOptCluster.getRexBuilder()).thenReturn(rexBuilder);
+    Mockito.when(relOptCluster.traitSetOf((RelTrait) any())).thenReturn(relTraitSet);
+
+    RelDataTypeFactory.Builder builder = new RelDataTypeFactory.Builder(typeFactory);
+    RelOptTable table = Mockito.mock(RelOptTable.class);
+    Mockito.when(table.getQualifiedName()).thenReturn(Collections.singletonList("table"));
+    Mockito.when(table.getRowType()).thenReturn(builder.add("column", SqlTypeName.VARCHAR).build());
+
+    RelOptSchema schema = Mockito.mock(RelOptSchema.class);
+    Mockito.when(schema.getTableForMember(anyList())).thenReturn(table);
+
+    RelBuilder logicalBuilder = RelFactories.LOGICAL_BUILDER.create(relOptCluster, schema);
+
+    LogicalSort sort = (LogicalSort) logicalBuilder
+        .scan("table")
+        .sort(0)
+        .limit(20, 10)
+        .build();
+
+    Mockito.when(dataSource.canScanOrdered(anyLong(), anyLong(), anyList())).thenReturn(true);
+
+    DruidQuery query = PartialDruidQuery.create(scanRel)
+        .withSort(sort)
+        .build(
+            dataSource,
+            RowSignature.builder().add("column", ColumnType.STRING).build(),
+            Mockito.mock(PlannerContext.class),
+            null,
+            false);
+
+    ScanQuery scanQuery = (ScanQuery) (query.getQuery());
+
+    Assert.assertNotNull(scanQuery);
+    Assert.assertEquals(10, scanQuery.getScanRowsLimit());
+    Assert.assertEquals(20, scanQuery.getScanRowsOffset());
+    Assert.assertEquals(1, scanQuery.getOrderBy().size());
+    Assert.assertEquals("column", scanQuery.getOrderBy().get(0).getDimension());
   }
 
   @Test(expected = CannotBuildQueryException.class)

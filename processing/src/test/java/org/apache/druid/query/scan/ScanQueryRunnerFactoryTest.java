@@ -34,6 +34,7 @@ import org.apache.druid.query.QueryRunnerTestHelper;
 import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.ResourceLimitExceededException;
 import org.apache.druid.query.SegmentDescriptor;
+import org.apache.druid.query.VirtualDataSource;
 import org.apache.druid.query.context.ResponseContext;
 import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.query.spec.LegacySegmentSpec;
@@ -49,6 +50,7 @@ import org.junit.experimental.runners.Enclosed;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -310,12 +312,14 @@ public class ScanQueryRunnerFactoryTest
           )
       );
       QuerySegmentSpec singleSpecificSpec = new SpecificSegmentSpec(descriptor);
+      ScanQuery multiSpecificQuery = buildScanForSegmentSpec(multiSpecificSpec);
+      ScanQuery singleSpecificQuery = buildScanForSegmentSpec(singleSpecificSpec);
 
-      List<Interval> intervals = FACTORY.getIntervalsFromSpecificQuerySpec(multiSpecificSpec);
+      List<Interval> intervals = FACTORY.getIntervalsFromQuery(multiSpecificQuery);
       Assert.assertEquals(1, intervals.size());
       Assert.assertEquals(descriptor.getInterval(), intervals.get(0));
 
-      intervals = FACTORY.getIntervalsFromSpecificQuerySpec(singleSpecificSpec);
+      intervals = FACTORY.getIntervalsFromQuery(singleSpecificQuery);
       Assert.assertEquals(1, intervals.size());
       Assert.assertEquals(descriptor.getInterval(), intervals.get(0));
     }
@@ -331,7 +335,8 @@ public class ScanQueryRunnerFactoryTest
               )
           )
       );
-      FACTORY.getIntervalsFromSpecificQuerySpec(multiIntervalSpec);
+      ScanQuery multiIntervalQuery = buildScanForSegmentSpec(multiIntervalSpec);
+      FACTORY.getIntervalsFromQuery(multiIntervalQuery);
     }
 
     @Test(expected = UOE.class)
@@ -343,9 +348,28 @@ public class ScanQueryRunnerFactoryTest
               DateTimes.of("2019-01-01").plusHours(1)
           )
       );
-      FACTORY.getIntervalsFromSpecificQuerySpec(legacySpec);
+      ScanQuery legacyQuery = buildScanForSegmentSpec(legacySpec);
+      FACTORY.getIntervalsFromQuery(legacyQuery);
     }
 
+    @Test
+    public void testGetSegmentDescriptorsFromVirtualDataSource()
+    {
+      VirtualDataSource vds = Mockito.mock(VirtualDataSource.class);
+
+      QuerySegmentSpec singleSpecificSpec = new SpecificSegmentSpec(descriptor);
+      ScanQuery singleSpecificQuery = buildScanForSegmentSpec(singleSpecificSpec);
+
+      ScanQuery vdsQuery = Druids.newScanQueryBuilder()
+          .copy(singleSpecificQuery)
+          .dataSource(vds)
+          .build();
+
+      List<Interval> intervals = FACTORY.getIntervalsFromQuery(vdsQuery);
+
+      Assert.assertEquals(1, intervals.size());
+      Assert.assertEquals(descriptor.getInterval(), intervals.get(0));
+    }
 
     @Test
     public void testMergeRunnersGuardrailsExceeded()
@@ -382,6 +406,14 @@ public class ScanQueryRunnerFactoryTest
           ),
           ResponseContext.createEmpty()
       );
+    }
+
+    ScanQuery buildScanForSegmentSpec(QuerySegmentSpec spec)
+    {
+      return new Druids.ScanQueryBuilder()
+          .dataSource("abc")
+          .intervals(spec)
+          .build();
     }
   }
 }

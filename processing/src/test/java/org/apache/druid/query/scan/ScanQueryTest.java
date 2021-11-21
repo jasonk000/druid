@@ -29,6 +29,7 @@ import org.apache.druid.query.Druids;
 import org.apache.druid.query.QueryUtils;
 import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
 import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
+import org.apache.druid.query.ordering.StringComparators;
 import org.apache.druid.query.spec.MultipleIntervalSegmentSpec;
 import org.apache.druid.query.spec.QuerySegmentSpec;
 import org.apache.druid.segment.column.ColumnHolder;
@@ -50,6 +51,8 @@ public class ScanQueryTest
   private static ScanResultValue s1;
   private static ScanResultValue s2;
   private static ScanResultValue s3;
+  private static ScanResultValue s4;
+  private static ScanResultValue s5;
 
   @BeforeClass
   public static void setup()
@@ -86,6 +89,24 @@ public class ScanQueryTest
         "segmentId",
         Collections.singletonList("yah"),
         events3
+    );
+
+    ArrayList<Map<String, Object>> events4 = new ArrayList<>();
+    events4.add(Collections.singletonMap("yah", "xxxxx"));
+
+    s4 = new ScanResultValue(
+        "segmentId",
+        Collections.singletonList("yah"),
+        events4
+    );
+
+    ArrayList<Map<String, Object>> events5 = new ArrayList<>();
+    events5.add(Collections.singletonMap("yah", "zzzz"));
+
+    s5 = new ScanResultValue(
+        "segmentId",
+        Collections.singletonList("yah"),
+        events5
     );
   }
 
@@ -267,6 +288,40 @@ public class ScanQueryTest
 
     // This should throw an ISE
     List<ScanResultValue> res = borkedSequence.toList();
+  }
+
+  @Test
+  public void testNonTimeOrderingAsc()
+  {
+    // test that query can set up a result ordering with a non-time-based column
+
+    List<OrderByColumnSpec> orderBys = new ArrayList<>();
+    orderBys.add(new OrderByColumnSpec(
+        "yah",
+        Direction.ASCENDING,
+        StringComparators.LEXICOGRAPHIC));
+
+    ScanQuery orderedScan = Druids.newScanQueryBuilder()
+                                          .orderBy(orderBys)
+                                          .resultFormat(ScanQuery.ResultFormat.RESULT_FORMAT_LIST)
+                                          .dataSource("some src")
+                                          .intervals(intervalSpec)
+                                          .build();
+
+    // s3 (yeet) s4 (xxxx) s5 (zzzz)
+
+    Sequence<ScanResultValue> result = Sequences.simple(
+        ImmutableList.of(
+            Sequences.simple(ImmutableList.of(s3)),
+            Sequences.simple(ImmutableList.of(s4)),
+            Sequences.simple(ImmutableList.of(s5))
+        )
+    ).flatMerge(seq -> seq, orderedScan.getResultOrdering());
+
+    List<ScanResultValue> resultList = result.toList();
+    Assert.assertEquals(s4, resultList.get(0));
+    Assert.assertEquals(s3, resultList.get(1));
+    Assert.assertEquals(s5, resultList.get(2));
   }
 
   @Test

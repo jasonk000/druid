@@ -144,16 +144,13 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     this.legacy = legacy;
     this.orderBy = (orderBy == null) ? Collections.emptyList() : orderBy;
     boolean hasTimeColumn = OrderByColumnSpec.getOrderByForDimName(this.orderBy, ColumnHolder.TIME_COLUMN_NAME) != null;
-    Preconditions.checkArgument(
-        this.orderBy.isEmpty() || (this.orderBy.size() == 1 && hasTimeColumn),
-        "Only sort by __time column is supported."
-    );
-    if (!this.orderBy.isEmpty()) {
+    if (!this.orderBy.isEmpty() && hasTimeColumn) {
       Preconditions.checkArgument(
           columns == null || columns.size() == 0 || columns.contains(ColumnHolder.TIME_COLUMN_NAME),
           "The __time column must be selected if the results are time-ordered."
       );
     }
+
     this.maxRowsQueuedForOrdering = validateAndGetMaxRowsQueuedForOrdering();
     this.maxSegmentPartitionsOrderedInMemory = validateAndGetMaxSegmentPartitionsOrderedInMemory();
   }
@@ -291,13 +288,22 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     if (orderBy.isEmpty()) {
       return Ordering.natural();
     }
-    return Ordering.from(
-        new ScanResultValueTimestampComparator(this).thenComparing(
-            (orderBy.get(0).getDirection() == Direction.ASCENDING)
-            ? Comparator.naturalOrder()
-            : Comparator.<ScanResultValue>naturalOrder().reversed()
-        )
-    );
+
+    if (orderBy.size() == 1) {
+      OrderByColumnSpec colSpec = orderBy.get(0);
+
+      if (colSpec.getDimension().equals(ColumnHolder.TIME_COLUMN_NAME)) {
+        Comparator<ScanResultValue> tsc = new ScanResultValueTimestampComparator(this);
+        if (colSpec.getDirection() == Direction.DESCENDING) {
+          tsc = tsc.thenComparing(Comparator.<ScanResultValue>naturalOrder().reversed());
+        } else {
+          tsc = tsc.thenComparing(Comparator.naturalOrder());
+        }
+        return Ordering.from(tsc);
+      }
+    }
+
+    return Ordering.from(new ScanResultValueCompoundComparator(this));
   }
 
   @Nullable

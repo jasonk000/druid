@@ -78,6 +78,7 @@ import org.apache.druid.sql.calcite.rule.DruidLogicalValuesRule;
 import org.apache.druid.sql.calcite.rule.DruidRelToDruidRule;
 import org.apache.druid.sql.calcite.rule.DruidRules;
 import org.apache.druid.sql.calcite.rule.DruidTableScanRule;
+import org.apache.druid.sql.calcite.rule.DruidVirtualTableRule;
 import org.apache.druid.sql.calcite.rule.FilterJoinExcludePushToChildRule;
 import org.apache.druid.sql.calcite.rule.ProjectAggregatePruneUnusedCallRule;
 import org.apache.druid.sql.calcite.rule.SortCollapseRule;
@@ -243,6 +244,7 @@ public class Rules
         .addAll(baseRuleSet(plannerContext))
         .add(DruidRelToDruidRule.instance())
         .add(new DruidTableScanRule(queryMaker))
+        .add(new DruidVirtualTableRule(queryMaker))
         .add(new DruidLogicalValuesRule(queryMaker))
         .addAll(DruidRules.rules(plannerContext));
 

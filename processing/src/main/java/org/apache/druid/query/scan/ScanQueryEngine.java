@@ -37,7 +37,9 @@ import org.apache.druid.query.context.ResponseContext;
 import org.apache.druid.query.filter.Filter;
 import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
 import org.apache.druid.segment.BaseObjectColumnValueSelector;
+import org.apache.druid.segment.Cursor;
 import org.apache.druid.segment.Segment;
+import org.apache.druid.segment.SortedCursorFactory;
 import org.apache.druid.segment.StorageAdapter;
 import org.apache.druid.segment.VirtualColumn;
 import org.apache.druid.segment.column.ColumnHolder;
@@ -125,21 +127,34 @@ public class ScanQueryEngine
 
     responseContext.add(ResponseContext.Key.NUM_SCANNED_ROWS, 0L);
     final long limit = calculateRemainingScanRowsLimit(query, responseContext);
-    final boolean isDescending = 
-        (!query.getOrderBy().isEmpty() &&
-          query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) ||
-        (query.getOrderBy().isEmpty() && query.isDescending());
 
-    return Sequences.concat(
-            adapter
-                .makeCursors(
-                    filter,
-                    intervals.get(0),
-                    query.getVirtualColumns(),
-                    Granularities.ALL,
-                    isDescending,
-                    null
-                )
+    final Sequence<Cursor> cursors;
+    if (adapter instanceof SortedCursorFactory) {
+      cursors = ((SortedCursorFactory) adapter).makeCursors(
+          query.getColumns(),
+          filter,
+          intervals.get(0),
+          query.getVirtualColumns(),
+          Granularities.ALL,
+          null,
+          query.getScanRowsOffset(),
+          query.getScanRowsLimit(),
+          query.getOrderBy());
+    } else {
+      final boolean isDescending = 
+          (!query.getOrderBy().isEmpty() &&
+            query.getOrderBy().get(0).getDirection() == Direction.DESCENDING) ||
+          (query.getOrderBy().isEmpty() && query.isDescending());
+      cursors = adapter.makeCursors(
+          filter,
+          intervals.get(0),
+          query.getVirtualColumns(),
+          Granularities.ALL,
+          isDescending,
+          null);
+    }
+
+    return Sequences.concat(cursors
                 .map(cursor -> new BaseSequence<>(
                     new BaseSequence.IteratorMaker<ScanResultValue, Iterator<ScanResultValue>>()
                     {

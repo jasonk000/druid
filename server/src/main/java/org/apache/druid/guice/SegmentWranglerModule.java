@@ -28,10 +28,12 @@ import com.google.inject.multibindings.MapBinder;
 import org.apache.druid.query.DataSource;
 import org.apache.druid.query.InlineDataSource;
 import org.apache.druid.query.LookupDataSource;
+import org.apache.druid.query.VirtualDataSource;
 import org.apache.druid.segment.InlineSegmentWrangler;
 import org.apache.druid.segment.LookupSegmentWrangler;
 import org.apache.druid.segment.MapSegmentWrangler;
 import org.apache.druid.segment.SegmentWrangler;
+import org.apache.druid.segment.VirtualSegmentWrangler;
 
 import java.util.Map;
 
@@ -47,7 +49,8 @@ public class SegmentWranglerModule implements Module
   static final Map<Class<? extends DataSource>, Class<? extends SegmentWrangler>> WRANGLER_MAPPINGS =
       ImmutableMap.of(
           InlineDataSource.class, InlineSegmentWrangler.class,
-          LookupDataSource.class, LookupSegmentWrangler.class
+          LookupDataSource.class, LookupSegmentWrangler.class,
+          VirtualDataSource.class, VirtualSegmentWrangler.class
       );
 
   @Override
