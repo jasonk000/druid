@@ -88,7 +88,6 @@ import org.apache.druid.server.security.AuthorizerMapper;
 import org.apache.druid.server.security.NoopEscalator;
 import org.apache.druid.server.security.ResourceType;
 import org.apache.druid.sql.calcite.planner.PlannerConfig;
-import org.apache.druid.sql.calcite.schema.SystemSchema.SegmentsTable;
 import org.apache.druid.sql.calcite.table.RowSignatures;
 import org.apache.druid.sql.calcite.util.CalciteTestBase;
 import org.apache.druid.sql.calcite.util.CalciteTests;
@@ -538,7 +537,7 @@ public class SystemSchemaTest extends CalciteTestBase
   @Test
   public void testSegmentsTable() throws Exception
   {
-    final SegmentsTable segmentsTable = new SegmentsTable(druidSchema, metadataView, new ObjectMapper(), authMapper);
+    final SystemSchema.SegmentsTable segmentsTable = new SystemSchema.SegmentsTable(druidSchema, metadataView, new ObjectMapper(), authMapper);
     final Set<SegmentWithOvershadowedStatus> publishedSegments = new HashSet<>(Arrays.asList(
         new SegmentWithOvershadowedStatus(publishedCompactedSegment1, true),
         new SegmentWithOvershadowedStatus(publishedCompactedSegment2, false),
@@ -1261,130 +1260,6 @@ public class SystemSchemaTest extends CalciteTestBase
         .scan(createDataContext(Users.SUPER))
         .toList();
     Assert.assertEquals(2, rows.size());
-  }
-
-  @Test
-  public void testSupervisorTable() throws Exception
-  {
-
-    SystemSchema.SupervisorsTable supervisorTable = EasyMock.createMockBuilder(SystemSchema.SupervisorsTable.class)
-                                                            .withConstructor(
-                                                                client,
-                                                                mapper,
-                                                                authMapper
-                                                            )
-                                                            .createMock();
-    EasyMock.replay(supervisorTable);
-    EasyMock.expect(client.makeRequest(HttpMethod.GET, "/druid/indexer/v1/supervisor?system"))
-            .andReturn(request)
-            .anyTimes();
-
-    HttpResponse httpResp = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    InputStreamFullResponseHolder responseHolder = new InputStreamFullResponseHolder(httpResp.getStatus(), httpResp);
-
-    EasyMock.expect(client.go(EasyMock.eq(request), EasyMock.anyObject(InputStreamFullResponseHandler.class))).andReturn(responseHolder).once();
-
-    EasyMock.expect(responseHandler.getStatus()).andReturn(httpResp.getStatus().getCode()).anyTimes();
-    EasyMock.expect(request.getUrl())
-            .andReturn(new URL("http://test-host:1234/druid/indexer/v1/supervisor?system"))
-            .anyTimes();
-
-    String json = "[{\n"
-                  + "\t\"id\": \"wikipedia\",\n"
-                  + "\t\"state\": \"UNHEALTHY_SUPERVISOR\",\n"
-                  + "\t\"detailedState\": \"UNABLE_TO_CONNECT_TO_STREAM\",\n"
-                  + "\t\"healthy\": false,\n"
-                  + "\t\"specString\": \"{\\\"type\\\":\\\"kafka\\\",\\\"dataSchema\\\":{\\\"dataSource\\\":\\\"wikipedia\\\"}"
-                  + ",\\\"context\\\":null,\\\"suspended\\\":false}\",\n"
-                  + "\t\"type\": \"kafka\",\n"
-                  + "\t\"source\": \"wikipedia\",\n"
-                  + "\t\"suspended\": false\n"
-                  + "}]";
-
-    byte[] bytesToWrite = json.getBytes(StandardCharsets.UTF_8);
-    responseHolder.addChunk(bytesToWrite);
-    responseHolder.done();
-
-    EasyMock.replay(client, request, responseHandler);
-    DataContext dataContext = createDataContext(Users.SUPER);
-    final List<Object[]> rows = supervisorTable.scan(dataContext).toList();
-
-    Object[] row0 = rows.get(0);
-    Assert.assertEquals("wikipedia", row0[0].toString());
-    Assert.assertEquals("UNHEALTHY_SUPERVISOR", row0[1].toString());
-    Assert.assertEquals("UNABLE_TO_CONNECT_TO_STREAM", row0[2].toString());
-    Assert.assertEquals(0L, row0[3]);
-    Assert.assertEquals("kafka", row0[4].toString());
-    Assert.assertEquals("wikipedia", row0[5].toString());
-    Assert.assertEquals(0L, row0[6]);
-    Assert.assertEquals(
-        "{\"type\":\"kafka\",\"dataSchema\":{\"dataSource\":\"wikipedia\"},\"context\":null,\"suspended\":false}",
-        row0[7].toString()
-    );
-
-    // Verify value types.
-    verifyTypes(rows, SystemSchema.SUPERVISOR_SIGNATURE);
-  }
-
-  @Test
-  public void testSupervisorTableAuth() throws Exception
-  {
-    SystemSchema.SupervisorsTable supervisorTable =
-        new SystemSchema.SupervisorsTable(client, mapper, createAuthMapper());
-
-    EasyMock.expect(client.makeRequest(HttpMethod.GET, "/druid/indexer/v1/supervisor?system"))
-            .andReturn(request)
-            .anyTimes();
-
-    final String json = "[{\n"
-                  + "\t\"id\": \"wikipedia\",\n"
-                  + "\t\"state\": \"UNHEALTHY_SUPERVISOR\",\n"
-                  + "\t\"detailedState\": \"UNABLE_TO_CONNECT_TO_STREAM\",\n"
-                  + "\t\"healthy\": false,\n"
-                  + "\t\"specString\": \"{\\\"type\\\":\\\"kafka\\\",\\\"dataSchema\\\":{\\\"dataSource\\\":\\\"wikipedia\\\"}"
-                  + ",\\\"context\\\":null,\\\"suspended\\\":false}\",\n"
-                  + "\t\"type\": \"kafka\",\n"
-                  + "\t\"source\": \"wikipedia\",\n"
-                  + "\t\"suspended\": false\n"
-                  + "}]";
-
-    HttpResponse httpResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    EasyMock.expect(client.go(EasyMock.eq(request), EasyMock.anyObject()))
-            .andReturn(createFullResponseHolder(httpResponse, json))
-            .andReturn(createFullResponseHolder(httpResponse, json))
-            .andReturn(createFullResponseHolder(httpResponse, json));
-
-    EasyMock.expect(responseHandler.getStatus())
-            .andReturn(httpResponse.getStatus().getCode())
-            .anyTimes();
-    EasyMock.expect(request.getUrl())
-            .andReturn(new URL("http://test-host:1234/druid/indexer/v1/supervisor?system"))
-            .anyTimes();
-
-    EasyMock.replay(client, request, responseHandler);
-
-    // Verify that no row is returned for Datasource Read user
-    List<Object[]> rows = supervisorTable
-        .scan(createDataContext(Users.DATASOURCE_READ))
-        .toList();
-    Assert.assertTrue(rows.isEmpty());
-
-    // Verify that 1 row is returned for Datasource Write user
-    rows = supervisorTable
-        .scan(createDataContext(Users.DATASOURCE_WRITE))
-        .toList();
-    Assert.assertEquals(1, rows.size());
-
-    // Verify that 1 row is returned for Super user
-    rows = supervisorTable
-        .scan(createDataContext(Users.SUPER))
-        .toList();
-    Assert.assertEquals(1, rows.size());
-
-    // TODO: If needed, verify the first row here
-
-    // TODO: Verify value types.
-    // verifyTypes(rows, SystemSchema.SUPERVISOR_SIGNATURE);
   }
 
   /**

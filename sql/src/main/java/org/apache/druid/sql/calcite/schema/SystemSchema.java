@@ -59,7 +59,6 @@ import org.apache.druid.discovery.DruidNodeDiscoveryProvider;
 import org.apache.druid.discovery.DruidService;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.indexer.TaskStatusPlus;
-import org.apache.druid.indexing.overlord.supervisor.SupervisorStatus;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.StringUtils;
@@ -185,18 +184,6 @@ public class SystemSchema extends AbstractSchema
       .add("plaintext_port", ColumnType.LONG)
       .add("tls_port", ColumnType.LONG)
       .add("error_msg", ColumnType.STRING)
-      .build();
-
-  static final RowSignature SUPERVISOR_SIGNATURE = RowSignature
-      .builder()
-      .add("supervisor_id", ColumnType.STRING)
-      .add("state", ColumnType.STRING)
-      .add("detailed_state", ColumnType.STRING)
-      .add("healthy", ColumnType.LONG)
-      .add("type", ColumnType.STRING)
-      .add("source", ColumnType.STRING)
-      .add("suspended", ColumnType.LONG)
-      .add("spec", ColumnType.STRING)
       .build();
 
   private final Map<String, Table> tableMap;
@@ -895,148 +882,6 @@ public class SystemSchema extends AbstractSchema
     return getThingsFromLeaderNode(
         "/druid/indexer/v1/tasks",
         new TypeReference<TaskStatusPlus>()
-        {
-        },
-        indexingServiceClient,
-        jsonMapper
-    );
-  }
-
-  /**
-   * This table contains a row per supervisor task.
-   */
-  static class SupervisorsTable extends AbstractTable implements ScannableTable
-  {
-    private final DruidLeaderClient druidLeaderClient;
-    private final ObjectMapper jsonMapper;
-    private final AuthorizerMapper authorizerMapper;
-
-    public SupervisorsTable(
-        DruidLeaderClient druidLeaderClient,
-        ObjectMapper jsonMapper,
-        AuthorizerMapper authorizerMapper
-    )
-    {
-      this.druidLeaderClient = druidLeaderClient;
-      this.jsonMapper = jsonMapper;
-      this.authorizerMapper = authorizerMapper;
-    }
-
-
-    @Override
-    public RelDataType getRowType(RelDataTypeFactory typeFactory)
-    {
-      return RowSignatures.toRelDataType(SUPERVISOR_SIGNATURE, typeFactory);
-    }
-
-    @Override
-    public TableType getJdbcTableType()
-    {
-      return TableType.SYSTEM_TABLE;
-    }
-
-    @Override
-    public Enumerable<Object[]> scan(DataContext root)
-    {
-      class SupervisorsEnumerable extends DefaultEnumerable<Object[]>
-      {
-        private final CloseableIterator<SupervisorStatus> it;
-
-        public SupervisorsEnumerable(JsonParserIterator<SupervisorStatus> tasks)
-        {
-          this.it = getAuthorizedSupervisors(tasks, root);
-        }
-
-        @Override
-        public Iterator<Object[]> iterator()
-        {
-          throw new UnsupportedOperationException("Do not use iterator(), it cannot be closed.");
-        }
-
-        @Override
-        public Enumerator<Object[]> enumerator()
-        {
-          return new Enumerator<Object[]>()
-          {
-            @Override
-            public Object[] current()
-            {
-              final SupervisorStatus supervisor = it.next();
-              return new Object[]{
-                  supervisor.getId(),
-                  supervisor.getState(),
-                  supervisor.getDetailedState(),
-                  supervisor.isHealthy() ? 1L : 0L,
-                  supervisor.getType(),
-                  supervisor.getSource(),
-                  supervisor.isSuspended() ? 1L : 0L,
-                  supervisor.getSpecString()
-              };
-            }
-
-            @Override
-            public boolean moveNext()
-            {
-              return it.hasNext();
-            }
-
-            @Override
-            public void reset()
-            {
-
-            }
-
-            @Override
-            public void close()
-            {
-              try {
-                it.close();
-              }
-              catch (IOException e) {
-                throw new RuntimeException(e);
-              }
-            }
-          };
-        }
-      }
-
-      return new SupervisorsEnumerable(getSupervisors(druidLeaderClient, jsonMapper));
-    }
-
-    private CloseableIterator<SupervisorStatus> getAuthorizedSupervisors(
-        JsonParserIterator<SupervisorStatus> it,
-        DataContext root
-    )
-    {
-      final AuthenticationResult authenticationResult = (AuthenticationResult) Preconditions.checkNotNull(
-          root.get(PlannerContext.DATA_CTX_AUTHENTICATION_RESULT),
-          "authenticationResult in dataContext"
-      );
-
-      Function<SupervisorStatus, Iterable<ResourceAction>> raGenerator = supervisor -> Collections.singletonList(
-          AuthorizationUtils.DATASOURCE_WRITE_RA_GENERATOR.apply(supervisor.getSource()));
-
-      final Iterable<SupervisorStatus> authorizedSupervisors = AuthorizationUtils.filterAuthorizedResources(
-          authenticationResult,
-          () -> it,
-          raGenerator,
-          authorizerMapper
-      );
-
-      return wrap(authorizedSupervisors.iterator(), it);
-    }
-  }
-
-  // Note that overlord must be up to get supervisor tasks, otherwise queries to sys.supervisors table
-  // will fail with internal server error (HTTP 500)
-  private static JsonParserIterator<SupervisorStatus> getSupervisors(
-      DruidLeaderClient indexingServiceClient,
-      ObjectMapper jsonMapper
-  )
-  {
-    return getThingsFromLeaderNode(
-        "/druid/indexer/v1/supervisor?system",
-        new TypeReference<SupervisorStatus>()
         {
         },
         indexingServiceClient,
