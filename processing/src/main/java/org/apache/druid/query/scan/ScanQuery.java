@@ -146,7 +146,7 @@ public class ScanQuery extends BaseQuery<ScanResultValue>
     boolean hasTimeColumn = OrderByColumnSpec.getOrderByForDimName(this.orderBy, ColumnHolder.TIME_COLUMN_NAME) != null;
     Preconditions.checkArgument(
         this.orderBy.isEmpty() || (this.orderBy.size() == 1 && hasTimeColumn),
-        "Only support by __time column is supported."
+        "Only sort by __time column is supported."
     );
     if (!this.orderBy.isEmpty()) {
       Preconditions.checkArgument(

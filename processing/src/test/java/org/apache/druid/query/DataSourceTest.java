@@ -25,11 +25,19 @@ import com.google.common.collect.Lists;
 import org.apache.druid.query.aggregation.LongSumAggregatorFactory;
 import org.apache.druid.query.dimension.DefaultDimensionSpec;
 import org.apache.druid.query.groupby.GroupByQuery;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec.Direction;
+import org.apache.druid.query.ordering.StringComparators;
 import org.apache.druid.segment.TestHelper;
+import org.apache.druid.segment.column.ColumnHolder;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class DataSourceTest
 {
@@ -98,5 +106,61 @@ public class DataSourceTest
 
     final DataSource serde = JSON_MAPPER.readValue(JSON_MAPPER.writeValueAsString(dataSource), DataSource.class);
     Assert.assertEquals(dataSource, serde);
+  }
+
+  @Test
+  public void testCanScanOrderedNoSort()
+  {
+    DataSource dataSource = Mockito.spy(DataSource.class);
+    Assert.assertTrue(dataSource.canScanOrdered(0, 0, Collections.emptyList()));
+  }
+
+  @Test
+  public void testCanScanOrderedSortByTime()
+  {
+    DataSource dataSource = Mockito.spy(DataSource.class);
+    List<OrderByColumnSpec> ordering = QueryUtils.newOrderByTimeSpec(Direction.DESCENDING);
+    Assert.assertTrue(dataSource.canScanOrdered(0, 0, ordering));
+  }
+
+  @Test
+  public void testCannotScanOrderedByTimeWrongSpec()
+  {
+    DataSource dataSource = Mockito.spy(DataSource.class);
+    List<OrderByColumnSpec> ordering = new ArrayList<OrderByColumnSpec>();
+    ordering.add(new OrderByColumnSpec(
+        ColumnHolder.TIME_COLUMN_NAME,
+        Direction.DESCENDING,
+        StringComparators.LEXICOGRAPHIC));
+    Assert.assertFalse(dataSource.canScanOrdered(0, 0, ordering));
+  }
+
+  @Test
+  public void testCannotScanOrderedByOtherColumn()
+  {
+    DataSource dataSource = Mockito.spy(DataSource.class);
+    List<OrderByColumnSpec> ordering = new ArrayList<OrderByColumnSpec>();
+    ordering.add(new OrderByColumnSpec(
+        "wrongcol",
+        Direction.DESCENDING,
+        StringComparators.NUMERIC));
+    Assert.assertFalse(dataSource.canScanOrdered(0, 0, ordering));
+  }
+
+  @Test
+  public void testCannotScanOrderedCompoundIncludingTime()
+  {
+
+    DataSource dataSource = Mockito.spy(DataSource.class);
+    List<OrderByColumnSpec> ordering = new ArrayList<OrderByColumnSpec>();
+    ordering.add(new OrderByColumnSpec(
+        ColumnHolder.TIME_COLUMN_NAME,
+        Direction.DESCENDING,
+        StringComparators.NUMERIC));
+    ordering.add(new OrderByColumnSpec(
+        "wrongcol",
+        Direction.DESCENDING,
+        StringComparators.NUMERIC));
+    Assert.assertFalse(dataSource.canScanOrdered(0, 0, ordering));
   }
 }

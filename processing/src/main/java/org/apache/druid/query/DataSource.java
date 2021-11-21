@@ -21,6 +21,9 @@ package org.apache.druid.query;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
+import org.apache.druid.query.ordering.StringComparators;
+import org.apache.druid.segment.column.ColumnHolder;
 
 import java.util.List;
 import java.util.Set;
@@ -87,4 +90,25 @@ public interface DataSource
    * @see org.apache.druid.query.planning.DataSourceAnalysis#isConcreteTableBased() which uses this
    */
   boolean isConcrete();
+
+  /**
+   * Confirm if this datasource can natively sort for a given offset, limit, and order spec
+   */
+  default boolean canScanOrdered(long offset, long limit, List<OrderByColumnSpec> orderBy)
+  {
+    // default scan query logic, override as necessary
+
+    // allow unsorted, or sorting by time column only
+    if (orderBy.isEmpty()) {
+      return true;
+    }
+
+    if (orderBy.size() == 1
+        && orderBy.get(0).getDimension().equals(ColumnHolder.TIME_COLUMN_NAME)
+        && orderBy.get(0).getDimensionComparator() == StringComparators.NUMERIC) {
+      return true;
+    }
+
+    return false;
+  }
 }

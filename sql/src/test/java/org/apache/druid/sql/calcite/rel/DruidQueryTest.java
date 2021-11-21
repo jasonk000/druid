@@ -19,6 +19,20 @@
 
 package org.apache.druid.sql.calcite.rel;
 
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelOptSchema;
+import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.plan.RelTrait;
+import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.RelFactories;
+import org.apache.calcite.rel.logical.LogicalSort;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
+import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.tools.RelBuilder;
 import org.apache.druid.common.config.NullHandling;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
@@ -31,14 +45,22 @@ import org.apache.druid.query.filter.BoundDimFilter;
 import org.apache.druid.query.filter.DimFilter;
 import org.apache.druid.query.filter.SelectorDimFilter;
 import org.apache.druid.query.ordering.StringComparators;
+import org.apache.druid.segment.column.ColumnType;
 import org.apache.druid.segment.column.RowSignature;
 import org.apache.druid.segment.join.JoinType;
 import org.apache.druid.sql.calcite.filtration.Filtration;
+import org.apache.druid.sql.calcite.planner.DruidTypeSystem;
+import org.apache.druid.sql.calcite.planner.PlannerContext;
 import org.joda.time.Interval;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.util.Collections;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 
 public class DruidQueryTest
 {
@@ -183,5 +205,44 @@ public class DruidQueryTest
     Assert.assertEquals(dataSource, pair.lhs);
     Assert.assertEquals("dim-filter: " + pair.rhs.getDimFilter(), columnFilter, pair.rhs.getDimFilter());
     Assert.assertEquals(Collections.singletonList(interval), pair.rhs.getIntervals());
+  }
+
+  @Test(expected = CannotBuildQueryException.class)
+  public void testScanDoesNotGenerateIfNotSupported()
+  {
+    DataSource dataSource = Mockito.mock(DataSource.class);
+
+    RelNode scanRel = Mockito.mock(RelNode.class);
+    RelOptPlanner relOptPlanner = Mockito.mock(RelOptPlanner.class);
+    RelOptCluster relOptCluster = Mockito.mock(RelOptCluster.class);
+    final RelDataTypeFactory typeFactory = new SqlTypeFactoryImpl(DruidTypeSystem.INSTANCE);
+    RexBuilder rexBuilder = new RexBuilder(typeFactory);
+    RelTraitSet relTraitSet = RelTraitSet.createEmpty();
+    Mockito.when(relOptCluster.getPlanner()).thenReturn(relOptPlanner);
+    Mockito.when(relOptCluster.getRexBuilder()).thenReturn(rexBuilder);
+    Mockito.when(relOptCluster.traitSetOf((RelTrait) any())).thenReturn(relTraitSet);
+
+    RelDataTypeFactory.Builder builder = new RelDataTypeFactory.Builder(typeFactory);
+    RelOptTable table = Mockito.mock(RelOptTable.class);
+    Mockito.when(table.getQualifiedName()).thenReturn(Collections.singletonList("table"));
+    Mockito.when(table.getRowType()).thenReturn(builder.add("column", SqlTypeName.VARCHAR).build());
+
+    RelOptSchema schema = Mockito.mock(RelOptSchema.class);
+    Mockito.when(schema.getTableForMember(anyList())).thenReturn(table);
+
+    RelBuilder logicalBuilder = RelFactories.LOGICAL_BUILDER.create(relOptCluster, schema);
+
+    LogicalSort sort = (LogicalSort) logicalBuilder.scan("table").sort(0).limit(20, 10).build();
+
+    Mockito.when(dataSource.canScanOrdered(anyLong(), anyLong(), anyList())).thenReturn(false);
+
+    PartialDruidQuery.create(scanRel)
+        .withSort(sort)
+        .build(
+            dataSource,
+            RowSignature.builder().add("column", ColumnType.STRING).build(),
+            Mockito.mock(PlannerContext.class),
+            null,
+            false);
   }
 }

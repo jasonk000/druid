@@ -68,7 +68,6 @@ import org.apache.druid.query.topn.TopNMetricSpec;
 import org.apache.druid.query.topn.TopNQuery;
 import org.apache.druid.segment.VirtualColumn;
 import org.apache.druid.segment.VirtualColumns;
-import org.apache.druid.segment.column.ColumnHolder;
 import org.apache.druid.segment.column.ColumnType;
 import org.apache.druid.segment.column.RowSignature;
 import org.apache.druid.segment.column.Types;
@@ -1096,6 +1095,8 @@ public class DruidQuery
       throw new ISE("Cannot convert to Scan query without any columns.");
     }
 
+    // TODO how does this work for SORT_PROJECT?
+
     final Pair<DataSource, Filtration> dataSourceFiltrationPair = getFiltration(
         dataSource,
         filter,
@@ -1104,39 +1105,24 @@ public class DruidQuery
     final DataSource newDataSource = dataSourceFiltrationPair.lhs;
     final Filtration filtration = dataSourceFiltrationPair.rhs;
 
-    long scanOffset = 0L;
-    long scanLimit = 0L;
+    final OffsetLimit offsetLimit = (sorting == null) ? OffsetLimit.none() : sorting.getOffsetLimit(); 
+    long offset = offsetLimit.hasOffset() ? offsetLimit.getOffset() : 0L;
+    long limit = offsetLimit.hasLimit() ? offsetLimit.getLimit() : Long.MAX_VALUE;
+
+    // avoid instantiating hash until we know scan is OK
+    final Set<String> columns;
 
     if (sorting != null) {
-      // precheck that we can accept it
-      if (sorting.getOrderBys() != null) {
-        if (sorting.getOrderBys().size() > 1) {
-          return null;
-        }
-        if (sorting.getOrderBys().size() == 1 && !sorting.getOrderBys().get(0).getDimension().equals(ColumnHolder.TIME_COLUMN_NAME)) {
-          return null;
-        }
+      // validate the datasource can do the required sort
+      if (!newDataSource.canScanOrdered(offset, limit, sorting.getOrderBys())) {
+        return null;
       }
 
-      scanOffset = sorting.getOffsetLimit().getOffset();
-
-      if (sorting.getOffsetLimit().hasLimit()) {
-        final long limit = sorting.getOffsetLimit().getLimit();
-
-        if (limit == 0) {
-          // Can't handle zero limit (the Scan query engine would treat it as unlimited).
-          return null;
-        }
-
-        scanLimit = limit;
-      }
-    }
-
-    // Compute the list of columns to select.
-    final Set<String> columns = new HashSet<>(outputRowSignature.getColumnNames());
-
-    if (sorting != null && sorting.getOrderBys() != null && !sorting.getOrderBys().isEmpty()) {
-      columns.add(ColumnHolder.TIME_COLUMN_NAME);
+      // if so, ensure columns include any required sort columns
+      columns = new HashSet<>(outputRowSignature.getColumnNames());
+      sorting.getOrderBys().forEach((colSpec) -> columns.add(colSpec.getDimension()));
+    } else {
+      columns = new HashSet<>(outputRowSignature.getColumnNames());
     }
 
     return new ScanQuery(
@@ -1145,9 +1131,9 @@ public class DruidQuery
         getVirtualColumns(true),
         ScanQuery.ResultFormat.RESULT_FORMAT_COMPACTED_LIST,
         0,
-        scanOffset,
-        scanLimit,
-        (sorting == null || sorting.getOrderBys() == null) ? Collections.emptyList() : sorting.getOrderBys(),
+        offset,
+        limit,
+        (sorting == null) ? Collections.emptyList() : sorting.getOrderBys(),
         filtration.getDimFilter(),
         Ordering.natural().sortedCopy(columns),
         false,

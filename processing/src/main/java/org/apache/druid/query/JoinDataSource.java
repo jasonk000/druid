@@ -28,6 +28,7 @@ import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.math.expr.ExprMacroTable;
 import org.apache.druid.query.filter.DimFilter;
+import org.apache.druid.query.groupby.orderby.OrderByColumnSpec;
 import org.apache.druid.segment.join.JoinConditionAnalysis;
 import org.apache.druid.segment.join.JoinPrefixUtils;
 import org.apache.druid.segment.join.JoinType;
@@ -219,6 +220,12 @@ public class JoinDataSource implements DataSource
   public boolean isConcrete()
   {
     return false;
+  }
+
+  @Override
+  public boolean canScanOrdered(long offset, long limit, List<OrderByColumnSpec> orderBy)
+  {
+    return left.canScanOrdered(offset, limit, orderBy);
   }
 
   @Override
