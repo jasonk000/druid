@@ -48,10 +48,12 @@ import org.apache.druid.utils.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -59,7 +61,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -88,7 +89,7 @@ public class TaskQueue
   private final ServiceEmitter emitter;
 
   private final ReentrantLock giant = new ReentrantLock(true);
-  private final Condition managementMayBeNecessary = giant.newCondition();
+  private final ArrayBlockingQueue<Object> managementMayBeNecessary = new ArrayBlockingQueue<>(8);
   private final ExecutorService managerExec = Executors.newSingleThreadExecutor(
       new ThreadFactoryBuilder()
           .setDaemon(false)
@@ -126,6 +127,34 @@ public class TaskQueue
     this.taskActionClientFactory = Preconditions.checkNotNull(taskActionClientFactory, "taskActionClientFactory");
     this.taskLockbox = Preconditions.checkNotNull(taskLockbox, "taskLockbox");
     this.emitter = Preconditions.checkNotNull(emitter, "emitter");
+  }
+
+  void requestManagement()
+  {
+    // offer - we do not actually care if the item fits into the queue:
+    // if the queue is already full, request has been triggered anyway
+    managementMayBeNecessary.offer(this);
+
+    // in fact, the request has to be offer (non blocking), since someone might request
+    // while already holding giant lock
+  }
+
+  void awaitManagementNanos(long nanos) throws InterruptedException
+  {
+    try {
+      // mitigate a busy loop, it can get pretty busy when there are a lot of start/stops
+      Thread.sleep(100);
+    }
+    catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+
+    // wait for an item, if an item arrives (or is already available), complete immediately
+    // does not actually matter what the item is
+    managementMayBeNecessary.poll(nanos - (TimeUnit.MILLISECONDS.toNanos(100)), TimeUnit.NANOSECONDS);
+
+    // there may have been multiple requests, clear them all
+    managementMayBeNecessary.clear();
   }
 
   /**
@@ -194,7 +223,7 @@ public class TaskQueue
             }
           }
       );
-      managementMayBeNecessary.signalAll();
+      requestManagement();
     }
     finally {
       giant.unlock();
@@ -215,7 +244,7 @@ public class TaskQueue
       active = false;
       managerExec.shutdownNow();
       storageSyncExec.shutdownNow();
-      managementMayBeNecessary.signalAll();
+      requestManagement();
     }
     finally {
       giant.unlock();
@@ -239,14 +268,20 @@ public class TaskQueue
     taskRunner.restore();
 
     while (active) {
+      Set<String> knownTaskIds = Collections.emptySet();
+      Map<String, ListenableFuture<TaskStatus>> runnerTaskFutures = new HashMap<>();
+
+      ///////// critical section
+
       giant.lock();
 
       try {
         // Task futures available from the taskRunner
-        final Map<String, ListenableFuture<TaskStatus>> runnerTaskFutures = new HashMap<>();
         for (final TaskRunnerWorkItem workItem : taskRunner.getKnownTasks()) {
           runnerTaskFutures.put(workItem.getTaskId(), workItem.getResult());
         }
+        Set<String> pendingTaskIds = getPendingTaskIds();
+
         // Attain futures for all active tasks (assuming they are ready to run).
         // Copy tasks list, as notifyStatus may modify it.
         for (final Task task : ImmutableList.copyOf(tasks)) {
@@ -273,49 +308,56 @@ public class TaskQueue
               }
             }
             taskFutures.put(task.getId(), attachCallbacks(task, runnerTaskFuture));
-          } else if (isTaskPending(task)) {
+          } else if (pendingTaskIds.contains(task.getId())) {
             // if the taskFutures contain this task and this task is pending, also let the taskRunner
             // to run it to guarantee it will be assigned to run
             // see https://github.com/apache/druid/pull/6991
             taskRunner.run(task);
           }
         }
+
         // Kill tasks that shouldn't be running
-        final Set<String> knownTaskIds = tasks
+        knownTaskIds = tasks
             .stream()
             .map(Task::getId)
             .collect(Collectors.toSet());
-        final Set<String> tasksToKill = Sets.difference(runnerTaskFutures.keySet(), knownTaskIds);
-        if (!tasksToKill.isEmpty()) {
-          log.info("Asking taskRunner to clean up %,d tasks.", tasksToKill.size());
-          for (final String taskId : tasksToKill) {
-            try {
-              taskRunner.shutdown(
-                  taskId,
-                  "task is not in knownTaskIds[%s]",
-                  knownTaskIds
-              );
-            }
-            catch (Exception e) {
-              log.warn(e, "TaskRunner failed to clean up task: %s", taskId);
-            }
-          }
-        }
-        // awaitNanos because management may become necessary without this condition signalling,
-        // due to e.g. tasks becoming ready when other folks mess with the TaskLockbox.
-        managementMayBeNecessary.awaitNanos(MANAGEMENT_WAIT_TIMEOUT_NANOS);
       }
       finally {
         giant.unlock();
       }
+
+      ///////// end critical section
+
+      Set<String> tasksToKill = Sets.difference(runnerTaskFutures.keySet(), knownTaskIds);
+      if (!tasksToKill.isEmpty()) {
+        log.info("Asking taskRunner to clean up %,d tasks.", tasksToKill.size());
+      }
+      final Set<String> knownTaskIdsFinal = knownTaskIds;
+      tasksToKill.parallelStream().forEach((String taskId) -> {
+        try {
+          taskRunner.shutdown(
+              taskId,
+              "task is not in knownTaskIds[%s]",
+              knownTaskIdsFinal
+          );
+        }
+        catch (Exception e) {
+          log.warn(e, "TaskRunner failed to clean up task: %s", taskId);
+        }
+      });
+
+      // awaitNanos because management may become necessary without this condition signalling,
+      // due to e.g. tasks becoming ready when other folks mess with the TaskLockbox.
+      awaitManagementNanos(MANAGEMENT_WAIT_TIMEOUT_NANOS);
     }
   }
 
-  private boolean isTaskPending(Task task)
+  Set<String> getPendingTaskIds()
   {
     return taskRunner.getPendingTasks()
-                     .stream()
-                     .anyMatch(workItem -> workItem.getTaskId().equals(task.getId()));
+        .stream()
+        .map(TaskRunnerWorkItem::getTaskId)
+        .collect(Collectors.toSet());
   }
 
   /**
@@ -347,7 +389,7 @@ public class TaskQueue
       // insert the task into our queue. So don't catch it.
       taskStorage.insert(task, TaskStatus.running(task.getId()));
       addTaskInternal(task);
-      managementMayBeNecessary.signalAll();
+      requestManagement();
       return true;
     }
     finally {
@@ -433,30 +475,34 @@ public class TaskQueue
    */
   private void notifyStatus(final Task task, final TaskStatus taskStatus, String reasonFormat, Object... args)
   {
-    giant.lock();
+    Preconditions.checkNotNull(task, "task");
+    Preconditions.checkNotNull(taskStatus, "status");
+    Preconditions.checkState(active, "Queue is not active!");
+    Preconditions.checkArgument(
+        task.getId().equals(taskStatus.getId()),
+        "Mismatching task ids[%s/%s]",
+        task.getId(),
+        taskStatus.getId()
+    );
 
+    // Inform taskRunner that this task can be shut down
     TaskLocation taskLocation = TaskLocation.unknown();
 
     try {
-      Preconditions.checkNotNull(task, "task");
-      Preconditions.checkNotNull(taskStatus, "status");
-      Preconditions.checkState(active, "Queue is not active!");
-      Preconditions.checkArgument(
-          task.getId().equals(taskStatus.getId()),
-          "Mismatching task ids[%s/%s]",
-          task.getId(),
-          taskStatus.getId()
-      );
-      // Inform taskRunner that this task can be shut down
-      try {
-        taskLocation = taskRunner.getTaskLocation(task.getId());
-        taskRunner.shutdown(task.getId(), reasonFormat, args);
-      }
-      catch (Exception e) {
-        log.warn(e, "TaskRunner failed to cleanup task after completion: %s", task.getId());
-      }
+      taskLocation = taskRunner.getTaskLocation(task.getId());
+      taskRunner.shutdown(task.getId(), reasonFormat, args);
+    }
+    catch (Exception e) {
+      log.warn(e, "TaskRunner failed to cleanup task after completion: %s", task.getId());
+    }
+
+    int removed = 0;
+
+    ///////// critical section
+
+    giant.lock();
+    try {
       // Remove from running tasks
-      int removed = 0;
       for (int i = tasks.size() - 1; i >= 0; i--) {
         if (tasks.get(i).getId().equals(task.getId())) {
           removed++;
@@ -464,35 +510,38 @@ public class TaskQueue
           break;
         }
       }
-      if (removed == 0) {
-        log.warn("Unknown task completed: %s", task.getId());
-      } else if (removed > 1) {
-        log.makeAlert("Removed multiple copies of task").addData("count", removed).addData("task", task.getId()).emit();
-      }
+
       // Remove from futures list
       taskFutures.remove(task.getId());
-      if (removed > 0) {
-        // If we thought this task should be running, save status to DB
-        try {
-          final Optional<TaskStatus> previousStatus = taskStorage.getStatus(task.getId());
-          if (!previousStatus.isPresent() || !previousStatus.get().isRunnable()) {
-            log.makeAlert("Ignoring notification for already-complete task").addData("task", task.getId()).emit();
-          } else {
-            taskStorage.setStatus(taskStatus.withLocation(taskLocation));
-            log.info("Task done: %s", task);
-            managementMayBeNecessary.signalAll();
-          }
-        }
-        catch (Exception e) {
-          log.makeAlert(e, "Failed to persist status for task")
-             .addData("task", task.getId())
-             .addData("statusCode", taskStatus.getStatusCode())
-             .emit();
-        }
-      }
     }
     finally {
       giant.unlock();
+    }
+
+    ///////// end critical
+
+    if (removed == 0) {
+      log.warn("Unknown task completed: %s", task.getId());
+    }
+
+    if (removed > 0) {
+      // If we thought this task should be running, save status to DB
+      try {
+        final Optional<TaskStatus> previousStatus = taskStorage.getStatus(task.getId());
+        if (!previousStatus.isPresent() || !previousStatus.get().isRunnable()) {
+          log.makeAlert("Ignoring notification for already-complete task").addData("task", task.getId()).emit();
+        } else {
+          taskStorage.setStatus(taskStatus.withLocation(taskLocation));
+          log.info("Task done: %s", task);
+          requestManagement();
+        }
+      }
+      catch (Exception e) {
+        log.makeAlert(e, "Failed to persist status for task")
+            .addData("task", task.getId())
+            .addData("statusCode", taskStatus.getStatusCode())
+            .emit();
+      }
     }
   }
 
@@ -613,7 +662,7 @@ public class TaskQueue
             addedTasks.size(),
             removedTasks.size()
         );
-        managementMayBeNecessary.signalAll();
+        requestManagement();
       } else {
         log.info("Not active. Skipping storage sync.");
       }
