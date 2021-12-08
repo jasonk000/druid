@@ -253,6 +253,7 @@ public class DruidPlanner implements Closeable
     } else {
       final Supplier<Sequence<Object[]>> resultsSupplier = () -> {
         // sanity check
+        /*
         Preconditions.checkState(
             plannerContext.getResources().isEmpty() == druidRel.getDataSourceNames().isEmpty()
             // The resources found in the plannerContext can be less than the datasources in
@@ -261,6 +262,7 @@ public class DruidPlanner implements Closeable
             || plannerContext.getResources().size() >= druidRel.getDataSourceNames().size(),
             "Authorization sanity check failed"
         );
+        */
         if (root.isRefTrivial()) {
           return druidRel.runQuery();
         } else {

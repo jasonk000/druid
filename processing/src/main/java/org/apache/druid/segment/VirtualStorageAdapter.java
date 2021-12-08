@@ -21,7 +21,6 @@ package org.apache.druid.segment;
 
 import com.google.common.base.Preconditions;
 import org.apache.druid.java.util.common.Intervals;
-import org.apache.druid.java.util.common.UOE;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.java.util.common.guava.Sequence;
 import org.apache.druid.query.QueryMetrics;
@@ -154,7 +153,7 @@ public class VirtualStorageAdapter implements StorageAdapter, SortedCursorFactor
       @Nullable final QueryMetrics<?> queryMetrics
   )
   {
-    throw new UOE("not implemented");
+    return makeCursors(rowSignature.getColumnNames(), filter, queryInterval, virtualColumns, gran, queryMetrics, 0, Long.MAX_VALUE, Collections.emptyList());
   }
 
   @Override
