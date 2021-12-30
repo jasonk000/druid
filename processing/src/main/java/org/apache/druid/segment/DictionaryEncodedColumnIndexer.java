@@ -43,9 +43,9 @@ public abstract class DictionaryEncodedColumnIndexer<KeyType, ActualType extends
   @Nullable
   protected SortedDimensionDictionary<ActualType> sortedLookup;
 
-  public DictionaryEncodedColumnIndexer(Class<ActualType> cls)
+  public DictionaryEncodedColumnIndexer()
   {
-    this.dimLookup = new DimensionDictionary<>(cls);
+    this.dimLookup = new DimensionDictionary<>();
   }
 
   @Override

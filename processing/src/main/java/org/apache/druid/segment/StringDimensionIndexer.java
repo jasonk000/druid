@@ -64,7 +64,6 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
 
   public StringDimensionIndexer(MultiValueHandling multiValueHandling, boolean hasBitmapIndexes, boolean hasSpatialIndexes)
   {
-    super(String.class);
     this.multiValueHandling = multiValueHandling == null ? MultiValueHandling.ofDefault() : multiValueHandling;
     this.hasBitmapIndexes = hasBitmapIndexes;
     this.hasSpatialIndexes = hasSpatialIndexes;
@@ -132,21 +131,30 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
     // string length is being accounted for each time they are referenced, based on dimension handler interface,
     // even though they are stored just once. It may overestimate the size by a bit, but we wanted to leave
     // more buffer to be safe
-    long estimatedSize = keys.length * Integer.BYTES;
 
-    String[] vals = dimLookup.getValues(keys);
-    for (String val : vals) {
-      if (val != null) {
-        // According to https://www.ibm.com/developerworks/java/library/j-codetoheap/index.html
-        // String has the following memory usuage...
-        // 28 bytes of data for String metadata (class pointer, flags, locks, hash, count, offset, reference to char array)
-        // 16 bytes of data for the char array metadata (class pointer, flags, locks, size)
-        // 2 bytes for every letter of the string
-        int sizeOfString = 28 + 16 + (2 * val.length());
-        estimatedSize += sizeOfString;
+    // nb: single-element array accumulates result because a lambda requires something 'final'
+    final long[] estimatedSize = new long[]{keys.length * Integer.BYTES};
+
+    dimLookup.doInsideReadLock((List<String> idToValue, Integer idForNull) -> {
+      long sizeOfStrings = 0;
+
+      for (int id : keys) {
+        if (id != idForNull) {
+          String val = idToValue.get(id);
+
+          // According to https://www.ibm.com/developerworks/java/library/j-codetoheap/index.html
+          // String has the following memory usuage...
+          // 28 bytes of data for String metadata (class pointer, flags, locks, hash, count, offset, reference to char array)
+          // 16 bytes of data for the char array metadata (class pointer, flags, locks, size)
+          // 2 bytes for every letter of the string (val.length * 2)
+          sizeOfStrings = 28 + 16 + val.length() + val.length();
+        }
       }
-    }
-    return estimatedSize;
+
+      estimatedSize[0] += sizeOfStrings;
+    });
+
+    return estimatedSize[0];
   }
 
   @Override
