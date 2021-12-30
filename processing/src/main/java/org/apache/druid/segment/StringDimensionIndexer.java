@@ -64,6 +64,7 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
 
   public StringDimensionIndexer(MultiValueHandling multiValueHandling, boolean hasBitmapIndexes, boolean hasSpatialIndexes)
   {
+    super(String.class);
     this.multiValueHandling = multiValueHandling == null ? MultiValueHandling.ofDefault() : multiValueHandling;
     this.hasBitmapIndexes = hasBitmapIndexes;
     this.hasSpatialIndexes = hasSpatialIndexes;
@@ -133,8 +134,7 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
     // more buffer to be safe
     long estimatedSize = keys.length * Integer.BYTES;
 
-    String[] vals = new String[keys.length];
-    dimLookup.getValuesInto(keys, vals);
+    String[] vals = dimLookup.getValues(keys);
     for (String val : vals) {
       if (val != null) {
         // According to https://www.ibm.com/developerworks/java/library/j-codetoheap/index.html
