@@ -228,12 +228,18 @@ public class KafkaIndexTaskTest extends SeekableStreamIndexTaskTestBase
     ).forEach(OBJECT_MAPPER::registerModule);
   }
 
-  @Parameterized.Parameters(name = "{0}")
+  @Parameterized.Parameters(name = "{0}, parsingThreadCount={1}")
   public static Iterable<Object[]> constructorFeeder()
   {
     return ImmutableList.of(
-        new Object[]{LockGranularity.TIME_CHUNK},
-        new Object[]{LockGranularity.SEGMENT}
+        new Object[]{LockGranularity.TIME_CHUNK, 0},
+        new Object[]{LockGranularity.TIME_CHUNK, 1},
+        new Object[]{LockGranularity.TIME_CHUNK, null},
+        new Object[]{LockGranularity.TIME_CHUNK, 16},
+        new Object[]{LockGranularity.SEGMENT, 0},
+        new Object[]{LockGranularity.SEGMENT, 1},
+        new Object[]{LockGranularity.SEGMENT, null},
+        new Object[]{LockGranularity.SEGMENT, 16}
     );
   }
 
@@ -247,6 +253,7 @@ public class KafkaIndexTaskTest extends SeekableStreamIndexTaskTestBase
   private Integer maxRowsPerSegment = null;
   private Long maxTotalRows = null;
   private Period intermediateHandoffPeriod = null;
+  private final Integer parsingThreadCount;
 
   private AppenderatorsManager appenderatorsManager;
   private String topic;
@@ -306,9 +313,10 @@ public class KafkaIndexTaskTest extends SeekableStreamIndexTaskTestBase
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derby = new TestDerbyConnector.DerbyConnectorRule();
 
-  public KafkaIndexTaskTest(LockGranularity lockGranularity)
+  public KafkaIndexTaskTest(LockGranularity lockGranularity, Integer parsingThreadCount)
   {
     super(lockGranularity);
+    this.parsingThreadCount = parsingThreadCount;
   }
 
   @BeforeClass
@@ -2811,7 +2819,8 @@ public class KafkaIndexTaskTest extends SeekableStreamIndexTaskTestBase
         intermediateHandoffPeriod,
         logParseExceptions,
         maxParseExceptions,
-        maxSavedParseExceptions
+        maxSavedParseExceptions,
+        parsingThreadCount
     );
     if (!context.containsKey(SeekableStreamSupervisor.CHECKPOINTS_CTX_KEY)) {
       final TreeMap<Integer, Map<Integer, Long>> checkpoints = new TreeMap<>();
