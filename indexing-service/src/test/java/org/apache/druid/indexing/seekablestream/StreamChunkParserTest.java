@@ -96,9 +96,7 @@ public class StreamChunkParserTest
         null,
         null,
         null,
-        row -> true,
-        rowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
     parseAndAssertResult(chunkParser);
   }
@@ -113,9 +111,7 @@ public class StreamChunkParserTest
         new InputRowSchema(TIMESTAMP_SPEC, DimensionsSpec.EMPTY, ColumnsFilter.all()),
         TransformSpec.NONE,
         temporaryFolder.newFolder(),
-        row -> true,
-        rowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
     parseAndAssertResult(chunkParser);
   }
@@ -131,9 +127,7 @@ public class StreamChunkParserTest
         null,
         null,
         null,
-        row -> true,
-        rowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
   }
 
@@ -161,9 +155,7 @@ public class StreamChunkParserTest
         new InputRowSchema(TIMESTAMP_SPEC, DimensionsSpec.EMPTY, ColumnsFilter.all()),
         TransformSpec.NONE,
         temporaryFolder.newFolder(),
-        row -> true,
-        rowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
     parseAndAssertResult(chunkParser);
     Assert.assertTrue(inputFormat.props.used);
@@ -183,12 +175,11 @@ public class StreamChunkParserTest
         new InputRowSchema(TIMESTAMP_SPEC, DimensionsSpec.EMPTY, ColumnsFilter.all()),
         TransformSpec.NONE,
         temporaryFolder.newFolder(),
-        row -> true,
-        mockRowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
-    List<InputRow> parsedRows = chunkParser.parse(ImmutableList.of(), false);
-    Assert.assertEquals(0, parsedRows.size());
+    List<StreamChunkParser.ParseResult> parsedRows = chunkParser.parse(ImmutableList.of(), false);
+    Assert.assertEquals(1, parsedRows.size());
+    parsedRows.forEach(pr -> pr.getInputRowAndApplyHandlers(mockRowIngestionMeters, parseExceptionHandler));
     Mockito.verify(mockRowIngestionMeters).incrementThrownAway();
   }
 
@@ -206,21 +197,20 @@ public class StreamChunkParserTest
         new InputRowSchema(TIMESTAMP_SPEC, DimensionsSpec.EMPTY, ColumnsFilter.all()),
         TransformSpec.NONE,
         temporaryFolder.newFolder(),
-        row -> true,
-        mockRowIngestionMeters,
-        parseExceptionHandler
+        row -> true
     );
-    List<InputRow> parsedRows = chunkParser.parse(ImmutableList.of(), true);
+    List<StreamChunkParser.ParseResult> parsedRows = chunkParser.parse(ImmutableList.of(), true);
     Assert.assertEquals(0, parsedRows.size());
+    parsedRows.forEach(pr -> pr.getInputRowAndApplyHandlers(mockRowIngestionMeters, parseExceptionHandler));
     Mockito.verifyNoInteractions(mockRowIngestionMeters);
   }
 
   private void parseAndAssertResult(StreamChunkParser<ByteEntity> chunkParser) throws IOException
   {
     final String json = "{\"timestamp\": \"2020-01-01\", \"dim\": \"val\", \"met\": \"val2\"}";
-    List<InputRow> parsedRows = chunkParser.parse(Collections.singletonList(new ByteEntity(json.getBytes(StringUtils.UTF8_STRING))), false);
+    List<StreamChunkParser.ParseResult> parsedRows = chunkParser.parse(Collections.singletonList(new ByteEntity(json.getBytes(StringUtils.UTF8_STRING))), false);
     Assert.assertEquals(1, parsedRows.size());
-    InputRow row = parsedRows.get(0);
+    InputRow row = parsedRows.get(0).getRowRaw();
     Assert.assertEquals(DateTimes.of("2020-01-01"), row.getTimestamp());
     Assert.assertEquals("val", Iterables.getOnlyElement(row.getDimension("dim")));
     Assert.assertEquals("val2", Iterables.getOnlyElement(row.getDimension("met")));
