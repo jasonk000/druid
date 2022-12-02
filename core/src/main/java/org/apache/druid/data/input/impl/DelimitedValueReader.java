@@ -23,6 +23,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
+import org.apache.commons.io.IOUtils;
 import org.apache.druid.data.input.InputEntity;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
@@ -35,6 +36,8 @@ import org.apache.druid.java.util.common.parsers.Parsers;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -76,16 +79,18 @@ public class DelimitedValueReader extends TextReader
   }
 
   @Override
-  public List<InputRow> parseInputRows(String line) throws IOException, ParseException
+  public List<InputRow> parseInputRows(InputStream line) throws IOException, ParseException
   {
-    final Map<String, Object> zipped = parseLine(line);
+    String lineString = IOUtils.toString(line, StandardCharsets.UTF_8.name());
+    final Map<String, Object> zipped = parseLine(lineString);
     return Collections.singletonList(MapInputRowParser.parse(getInputRowSchema(), zipped));
   }
 
   @Override
-  public List<Map<String, Object>> toMap(String intermediateRow) throws IOException
+  public List<Map<String, Object>> toMap(InputStream intermediateRow) throws IOException
   {
-    return Collections.singletonList(parseLine(intermediateRow));
+    String intermediateRowString = IOUtils.toString(intermediateRow, StandardCharsets.UTF_8.name());
+    return Collections.singletonList(parseLine(intermediateRowString));
   }
 
   private Map<String, Object> parseLine(String line) throws IOException
@@ -110,12 +115,13 @@ public class DelimitedValueReader extends TextReader
   }
 
   @Override
-  public void processHeaderLine(String line) throws IOException
+  public void processHeaderLine(InputStream line) throws IOException
   {
     if (!findColumnsFromHeader) {
       throw new ISE("Don't call this if findColumnsFromHeader = false");
     }
-    columns = findOrCreateColumnNames(parser.parseLine(line));
+    String lineString = IOUtils.toString(line, StandardCharsets.UTF_8.name());
+    columns = findOrCreateColumnNames(parser.parseLine(lineString));
     if (columns.isEmpty()) {
       throw new ISE("Empty columns");
     }

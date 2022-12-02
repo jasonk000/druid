@@ -32,6 +32,7 @@ import org.apache.druid.java.util.common.parsers.ObjectFlatteners;
 import org.apache.druid.java.util.common.parsers.ParseException;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -64,7 +65,7 @@ public class JsonLineReader extends TextReader
   }
 
   @Override
-  public List<InputRow> parseInputRows(String line) throws IOException, ParseException
+  public List<InputRow> parseInputRows(InputStream line) throws IOException, ParseException
   {
     final JsonNode document = mapper.readValue(line, JsonNode.class);
     final Map<String, Object> flattened = flattener.flatten(document);
@@ -72,7 +73,7 @@ public class JsonLineReader extends TextReader
   }
 
   @Override
-  public List<Map<String, Object>> toMap(String intermediateRow) throws IOException
+  public List<Map<String, Object>> toMap(InputStream intermediateRow) throws IOException
   {
     //noinspection unchecked
     return Collections.singletonList(mapper.readValue(intermediateRow, Map.class));
@@ -91,7 +92,7 @@ public class JsonLineReader extends TextReader
   }
 
   @Override
-  public void processHeaderLine(String line)
+  public void processHeaderLine(InputStream line)
   {
     // do nothing
   }

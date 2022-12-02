@@ -22,6 +22,7 @@ package org.apache.druid.data.input.impl;
 import com.google.common.base.Function;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
+import org.apache.commons.io.IOUtils;
 import org.apache.druid.data.input.InputEntity;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
@@ -32,6 +33,9 @@ import org.apache.druid.java.util.common.parsers.ParserUtils;
 import org.apache.druid.java.util.common.parsers.Parsers;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -65,15 +69,17 @@ public class RegexReader extends TextReader
   }
 
   @Override
-  public List<InputRow> parseInputRows(String intermediateRow) throws ParseException
+  public List<InputRow> parseInputRows(InputStream intermediateRow) throws IOException, ParseException
   {
-    return Collections.singletonList(MapInputRowParser.parse(getInputRowSchema(), parseLine(intermediateRow)));
+    String intermediateRowString = IOUtils.toString(intermediateRow, StandardCharsets.UTF_8.name());
+    return Collections.singletonList(MapInputRowParser.parse(getInputRowSchema(), parseLine(intermediateRowString)));
   }
 
   @Override
-  protected List<Map<String, Object>> toMap(String intermediateRow)
+  protected List<Map<String, Object>> toMap(InputStream intermediateRow) throws IOException
   {
-    return Collections.singletonList(parseLine(intermediateRow));
+    String intermediateRowString = IOUtils.toString(intermediateRow, StandardCharsets.UTF_8.name());
+    return Collections.singletonList(parseLine(intermediateRowString));
   }
 
   private Map<String, Object> parseLine(String line)
@@ -114,7 +120,7 @@ public class RegexReader extends TextReader
   }
 
   @Override
-  public void processHeaderLine(String line)
+  public void processHeaderLine(InputStream line)
   {
     // do nothing
   }
