@@ -34,6 +34,7 @@ import org.apache.druid.query.dimension.DimensionSpec;
 import org.apache.druid.query.extraction.ExtractionFn;
 import org.apache.druid.query.filter.ValueMatcher;
 import org.apache.druid.query.monomorphicprocessing.RuntimeShapeInspector;
+import org.apache.druid.segment.DimensionDictionary.AddResult;
 import org.apache.druid.segment.column.ColumnCapabilities;
 import org.apache.druid.segment.column.ColumnCapabilitiesImpl;
 import org.apache.druid.segment.column.ColumnType;
@@ -82,19 +83,21 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
   public EncodedKeyComponent<int[]> processRowValsToUnsortedEncodedKeyComponent(@Nullable Object dimValues, boolean reportParseExceptions)
   {
     final int[] encodedDimensionValues;
-    final int oldDictSize = dimLookup.size();
+    boolean didAddNew = false;
     final long oldDictSizeInBytes = useMaxMemoryEstimates ? 0 : dimLookup.sizeInBytes();
 
-    if (dimValues == null) {
-      final int nullId = dimLookup.getId(null);
-      encodedDimensionValues = nullId == DimensionDictionary.ABSENT_VALUE_ID ? new int[]{dimLookup.add(null)} : new int[]{nullId};
-    } else if (dimValues instanceof List) {
+    if (dimValues instanceof List) {
       List<Object> dimValuesList = (List<Object>) dimValues;
       if (dimValuesList.isEmpty()) {
-        dimLookup.add(null);
+        AddResult result = dimLookup.add(null);
+        didAddNew = result.wasAdded();
         encodedDimensionValues = IntArrays.EMPTY_ARRAY;
+
       } else if (dimValuesList.size() == 1) {
-        encodedDimensionValues = new int[]{dimLookup.add(emptyToNullIfNeeded(dimValuesList.get(0)))};
+        AddResult result = dimLookup.add(emptyToNullIfNeeded(dimValuesList.get(0)));
+        didAddNew = result.wasAdded();
+        encodedDimensionValues = new int[]{result.getIndex()};
+
       } else {
         hasMultipleValues = true;
         final String[] dimensionValues = new String[dimValuesList.size()];
@@ -111,27 +114,33 @@ public class StringDimensionIndexer extends DictionaryEncodedColumnIndexer<int[]
         int prevId = -1;
         int pos = 0;
         for (String dimensionValue : dimensionValues) {
+          AddResult result = dimLookup.add(dimensionValue);
+          didAddNew |= result.wasAdded();
           if (multiValueHandling != MultiValueHandling.SORTED_SET) {
-            retVal[pos++] = dimLookup.add(dimensionValue);
+            retVal[pos++] = result.getIndex();
             continue;
           }
-          int index = dimLookup.add(dimensionValue);
-          if (index != prevId) {
-            prevId = retVal[pos++] = index;
+          if (result.getIndex() != prevId) {
+            prevId = retVal[pos++] = result.getIndex();
           }
         }
 
         encodedDimensionValues = pos == retVal.length ? retVal : Arrays.copyOf(retVal, pos);
       }
+
     } else if (dimValues instanceof byte[]) {
-      encodedDimensionValues =
-          new int[]{dimLookup.add(emptyToNullIfNeeded(StringUtils.encodeBase64String((byte[]) dimValues)))};
+      AddResult result = dimLookup.add(emptyToNullIfNeeded(StringUtils.encodeBase64String((byte[]) dimValues)));
+      didAddNew = result.wasAdded();
+      encodedDimensionValues = new int[]{result.getIndex()};
+
     } else {
-      encodedDimensionValues = new int[]{dimLookup.add(emptyToNullIfNeeded(dimValues))};
+      AddResult result = dimLookup.add(emptyToNullIfNeeded(dimValues));
+      didAddNew = result.wasAdded();
+      encodedDimensionValues = new int[]{result.getIndex()};
     }
 
     // If dictionary size has changed, the sorted lookup is no longer valid.
-    if (oldDictSize != dimLookup.size()) {
+    if (didAddNew) {
       sortedLookup = null;
     }
 
