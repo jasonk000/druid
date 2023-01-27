@@ -26,8 +26,8 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Buildable dictionary for some comparable type. Values are unsorted, or rather sorted in the order which they are
@@ -48,44 +48,37 @@ public abstract class DimensionDictionary<T extends Comparable<T>>
   private volatile int idForNull = ABSENT_VALUE_ID;
 
   private final AtomicLong sizeInBytes = new AtomicLong(0L);
+  private final AtomicInteger size = new AtomicInteger(0);
   private final Object2IntMap<T> valueToId = new Object2IntOpenHashMap<>();
 
   private final List<T> idToValue = new ArrayList<>();
-  private final ReentrantReadWriteLock lock;
 
   public DimensionDictionary(Class<T> cls)
   {
     this.cls = cls;
-    this.lock = new ReentrantReadWriteLock();
     valueToId.defaultReturnValue(ABSENT_VALUE_ID);
   }
 
   public int getId(@Nullable T value)
   {
-    lock.readLock().lock();
-    try {
-      if (value == null) {
-        return idForNull;
-      }
-      return valueToId.getInt(value);
+    if (value == null) {
+      return idForNull;
     }
-    finally {
-      lock.readLock().unlock();
+
+    synchronized (this) {
+      return valueToId.getInt(value);
     }
   }
 
   @Nullable
   public T getValue(int id)
   {
-    lock.readLock().lock();
-    try {
-      if (id == idForNull) {
-        return null;
-      }
-      return idToValue.get(id);
+    if (id == idForNull) {
+      return null;
     }
-    finally {
-      lock.readLock().unlock();
+
+    synchronized (this) {
+      return idToValue.get(id);
     }
   }
 
@@ -93,28 +86,17 @@ public abstract class DimensionDictionary<T extends Comparable<T>>
   {
     T[] values = (T[]) Array.newInstance(cls, ids.length);
 
-    lock.readLock().lock();
-    try {
+    synchronized (this) {
       for (int i = 0; i < ids.length; i++) {
         values[i] = (ids[i] == idForNull) ? null : idToValue.get(ids[i]);
       }
       return values;
     }
-    finally {
-      lock.readLock().unlock();
-    }
   }
 
   public int size()
   {
-    lock.readLock().lock();
-    try {
-      // using idToValue rather than valueToId because the valueToId doesn't account null value, if it is present.
-      return idToValue.size();
-    }
-    finally {
-      lock.readLock().unlock();
-    }
+    return size.get();
   }
 
   /**
@@ -131,58 +113,62 @@ public abstract class DimensionDictionary<T extends Comparable<T>>
     return sizeInBytes.get();
   }
 
+  private int addNull()
+  {
+    if (idForNull != ABSENT_VALUE_ID) {
+      return idForNull;
+    }
+
+    synchronized (this) {
+      if (idForNull == ABSENT_VALUE_ID) {
+        idForNull = idToValue.size();
+        idToValue.add(null);
+        size.incrementAndGet();
+      }
+      return idForNull;
+    }
+  }
+
   public int add(@Nullable T originalValue)
   {
-    lock.writeLock().lock();
-    try {
-      if (originalValue == null) {
-        if (idForNull == ABSENT_VALUE_ID) {
-          idForNull = idToValue.size();
-          idToValue.add(null);
-        }
-        return idForNull;
-      }
-      int prev = valueToId.getInt(originalValue);
+    if (originalValue == null) {
+      return addNull();
+    }
+
+    long extraSize = 0;
+    if (computeOnHeapSize()) {
+      // Add size of new dim value and 2 references (valueToId and idToValue)
+      extraSize = estimateSizeOfValue(originalValue) + 2L * Long.BYTES;
+    }
+
+    synchronized (this) {
+      final int index = idToValue.size();
+      int prev = valueToId.putIfAbsent(originalValue, index);
       if (prev >= 0) {
         return prev;
       }
-      final int index = idToValue.size();
-      valueToId.put(originalValue, index);
-      idToValue.add(originalValue);
 
-      if (computeOnHeapSize()) {
-        // Add size of new dim value and 2 references (valueToId and idToValue)
-        sizeInBytes.addAndGet(estimateSizeOfValue(originalValue) + 2L * Long.BYTES);
-      }
+      idToValue.add(originalValue);
+      size.incrementAndGet();
+      sizeInBytes.addAndGet(extraSize);
 
       minValue = minValue == null || minValue.compareTo(originalValue) > 0 ? originalValue : minValue;
       maxValue = maxValue == null || maxValue.compareTo(originalValue) < 0 ? originalValue : maxValue;
       return index;
     }
-    finally {
-      lock.writeLock().unlock();
-    }
   }
 
   public T getMinValue()
   {
-    lock.readLock().lock();
-    try {
+    synchronized (this) {
       return minValue;
-    }
-    finally {
-      lock.readLock().unlock();
     }
   }
 
   public T getMaxValue()
   {
-    lock.readLock().lock();
-    try {
+    synchronized (this) {
       return maxValue;
-    }
-    finally {
-      lock.readLock().unlock();
     }
   }
 
@@ -193,12 +179,8 @@ public abstract class DimensionDictionary<T extends Comparable<T>>
 
   public SortedDimensionDictionary<T> sort()
   {
-    lock.readLock().lock();
-    try {
+    synchronized (this) {
       return new SortedDimensionDictionary<>(idToValue, idToValue.size());
-    }
-    finally {
-      lock.readLock().unlock();
     }
   }
 
