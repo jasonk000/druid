@@ -337,6 +337,7 @@ public class KafkaSupervisorTest extends EasyMockSupport
             null,
             null,
             null,
+            null,
             null
     );
 
@@ -472,6 +473,7 @@ public class KafkaSupervisorTest extends EasyMockSupport
             null
         ),
         new KafkaIndexTaskTuningConfig(
+            null,
             null,
             null,
             null,
@@ -4004,6 +4006,7 @@ public class KafkaSupervisorTest extends EasyMockSupport
             null,
             null,
             null,
+            null,
             null
         )
     );
@@ -4040,6 +4043,7 @@ public class KafkaSupervisorTest extends EasyMockSupport
         TEST_CHAT_RETRIES,
         TEST_HTTP_TIMEOUT,
         TEST_SHUTDOWN_TIMEOUT,
+        null,
         null,
         null,
         null,
@@ -4572,7 +4576,8 @@ public class KafkaSupervisorTest extends EasyMockSupport
         null,
         null,
         null,
-        10
+        10,
+        null
     );
 
     return new TestableKafkaSupervisor(
@@ -4682,6 +4687,7 @@ public class KafkaSupervisorTest extends EasyMockSupport
         TEST_CHAT_RETRIES,
         TEST_HTTP_TIMEOUT,
         TEST_SHUTDOWN_TIMEOUT,
+        null,
         null,
         null,
         null,
