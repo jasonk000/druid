@@ -559,6 +559,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   {
     final List<DataSegment> unusedSegments = new ArrayList<>();
     final SegmentTimeline timeline = new SegmentTimeline();
+    final Integer unlimitedLimit = null;
 
     connector.inReadOnlyTransaction(
         (handle, status) -> {
@@ -574,7 +575,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
           }
 
           try (final CloseableIterator<DataSegment> iterator =
-                   queryTool.retrieveUnusedSegments(dataSourceName, intervals)) {
+                   queryTool.retrieveUnusedSegments(dataSourceName, intervals, unlimitedLimit)) {
             while (iterator.hasNext()) {
               final DataSegment dataSegment = iterator.next();
               timeline.addSegments(Iterators.singletonIterator(dataSegment));

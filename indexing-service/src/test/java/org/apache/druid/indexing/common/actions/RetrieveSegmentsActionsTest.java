@@ -26,6 +26,7 @@ import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.partition.NoneShardSpec;
+import org.assertj.core.api.Assertions;
 import org.joda.time.Interval;
 import org.junit.Assert;
 import org.junit.Before;
@@ -104,7 +105,27 @@ public class RetrieveSegmentsActionsTest
   @Test
   public void testRetrieveUnusedSegmentsAction()
   {
-    final RetrieveUnusedSegmentsAction action = new RetrieveUnusedSegmentsAction(task.getDataSource(), INTERVAL);
+    final Integer limit = null;
+    final RetrieveUnusedSegmentsAction action = new RetrieveUnusedSegmentsAction(task.getDataSource(), INTERVAL, limit);
+    final Set<DataSegment> resultSegments = new HashSet<>(action.perform(task, actionTestKit.getTaskActionToolbox()));
+    Assert.assertEquals(expectedUnusedSegments, resultSegments);
+  }
+
+  @Test
+  public void testRetrieveUnusedSegmentsActionWithLimit()
+  {
+    final Integer limit = 2;
+    final RetrieveUnusedSegmentsAction action = new RetrieveUnusedSegmentsAction(task.getDataSource(), INTERVAL, limit);
+    final Set<DataSegment> resultSegments = new HashSet<>(action.perform(task, actionTestKit.getTaskActionToolbox()));
+    Assert.assertEquals(2, resultSegments.size());
+    Assertions.assertThat(expectedUnusedSegments).containsOnlyOnceElementsOf(resultSegments);
+  }
+
+  @Test
+  public void testRetrieveUnusedSegmentsActionWithLargeLimit()
+  {
+    final Integer limit = 1000;
+    final RetrieveUnusedSegmentsAction action = new RetrieveUnusedSegmentsAction(task.getDataSource(), INTERVAL, limit);
     final Set<DataSegment> resultSegments = new HashSet<>(action.perform(task, actionTestKit.getTaskActionToolbox()));
     Assert.assertEquals(expectedUnusedSegments, resultSegments);
   }

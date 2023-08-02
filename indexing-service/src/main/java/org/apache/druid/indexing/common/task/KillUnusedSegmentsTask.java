@@ -26,7 +26,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import org.apache.druid.client.indexing.ClientKillUnusedSegmentsTaskQuery;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexing.common.TaskLock;
@@ -152,22 +151,23 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       LOG.info("Marked %d segments as unused.", numMarked);
     }
 
-    // List unused segments
-    final List<DataSegment> allUnusedSegments = toolbox
-        .getTaskActionClient()
-        .submit(new RetrieveUnusedSegmentsAction(getDataSource(), getInterval()));
-
-    final List<List<DataSegment>> unusedSegmentBatches = Lists.partition(allUnusedSegments, batchSize);
-
     // The individual activities here on the toolbox have possibility to run for a longer period of time,
     // since they involve calls to metadata storage and archival object storage. And, the tasks take hold of the
     // task lockbox to run. By splitting the segment list into smaller batches, we have an opportunity to yield the
     // lock to other activity that might need to happen using the overlord tasklockbox.
 
-    LOG.info("Running kill task[%s] for dataSource[%s] and interval[%s]. Killing total [%,d] unused segments in [%d] batches(batchSize = [%d]).",
-            getId(), getDataSource(), getInterval(), allUnusedSegments.size(), unusedSegmentBatches.size(), batchSize);
+    LOG.info("Running kill task[%s] for dataSource[%s] and interval[%s]. Killing unused segments in batches(batchSize = [%d]).",
+            getId(), getDataSource(), getInterval(), batchSize);
 
-    for (final List<DataSegment> unusedSegments : unusedSegmentBatches) {
+    int numSegmentsRemoved = 0;
+
+    while (true) {
+      final List<DataSegment> unusedSegments = toolbox.getTaskActionClient()
+              .submit(new RetrieveUnusedSegmentsAction(getDataSource(), getInterval(), batchSize));
+      if (unusedSegments.isEmpty()) {
+        break;
+      }
+
       if (!TaskLocks.isLockCoversSegments(taskLockMap, unusedSegments)) {
         throw new ISE(
                 "Locks[%s] for task[%s] can't cover segments[%s]",
@@ -186,15 +186,16 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       toolbox.getTaskActionClient().submit(new SegmentNukeAction(new HashSet<>(unusedSegments)));
       toolbox.getDataSegmentKiller().kill(unusedSegments);
       numBatchesProcessed++;
+      numSegmentsRemoved += unusedSegments.size();
 
       if (numBatchesProcessed % 10 == 0) {
-        LOG.info("Processed [%d/%d] batches for kill task[%s].",
-                numBatchesProcessed, unusedSegmentBatches.size(), getId());
+        LOG.info("Processed [%d] segments, [%d] batches for kill task[%s].",
+                numSegmentsRemoved, numBatchesProcessed, getId());
       }
     }
 
     LOG.info("Finished kill task[%s] for dataSource[%s] and interval[%s]. Deleted total [%,d] unused segments in [%d] batches.",
-            getId(), getDataSource(), getInterval(), allUnusedSegments.size(), unusedSegmentBatches.size());
+            getId(), getDataSource(), getInterval(), numSegmentsRemoved, numBatchesProcessed);
 
     return TaskStatus.success(getId());
   }

@@ -189,13 +189,15 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
-  public List<DataSegment> retrieveUnusedSegmentsForInterval(final String dataSource, final Interval interval)
+  public List<DataSegment> retrieveUnusedSegmentsForInterval(final String dataSource, final Interval interval, @Nullable final Integer limit)
   {
+    Preconditions.checkArgument(limit == null || limit > 0, "limit must be null or positive");
+
     final List<DataSegment> matchingSegments = connector.inReadOnlyTransaction(
         (handle, status) -> {
           try (final CloseableIterator<DataSegment> iterator =
                    SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
-                                           .retrieveUnusedSegments(dataSource, Collections.singletonList(interval))) {
+                                           .retrieveUnusedSegments(dataSource, Collections.singletonList(interval), limit)) {
             return ImmutableList.copyOf(iterator);
           }
         }

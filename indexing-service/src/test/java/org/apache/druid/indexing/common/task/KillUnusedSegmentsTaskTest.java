@@ -87,7 +87,7 @@ public class KillUnusedSegmentsTaskTest extends IngestionTestBase
     Assert.assertEquals(TaskState.SUCCESS, taskRunner.run(task).get().getStatusCode());
 
     final List<DataSegment> unusedSegments =
-        getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"));
+        getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"), null);
 
     Assert.assertEquals(ImmutableList.of(newSegment(Intervals.of("2019-02-01/2019-03-01"), version)), unusedSegments);
     Assertions.assertThat(
@@ -134,7 +134,7 @@ public class KillUnusedSegmentsTaskTest extends IngestionTestBase
     Assert.assertEquals(TaskState.SUCCESS, taskRunner.run(task).get().getStatusCode());
 
     final List<DataSegment> unusedSegments =
-        getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"));
+        getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"), null);
 
     Assert.assertEquals(ImmutableList.of(newSegment(Intervals.of("2019-02-01/2019-03-01"), version)), unusedSegments);
     Assertions.assertThat(
@@ -191,7 +191,7 @@ public class KillUnusedSegmentsTaskTest extends IngestionTestBase
     // we expect ALL tasks to be deleted
 
     final List<DataSegment> unusedSegments =
-            getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"));
+            getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"), null);
 
     Assert.assertEquals(Collections.emptyList(), unusedSegments);
     Assert.assertEquals(4L, task.getNumBatchesProcessed());
@@ -226,7 +226,7 @@ public class KillUnusedSegmentsTaskTest extends IngestionTestBase
     // we expect ALL tasks to be deleted
 
     final List<DataSegment> unusedSegments =
-            getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"));
+            getMetadataStorageCoordinator().retrieveUnusedSegmentsForInterval(DATA_SOURCE, Intervals.of("2019/2020"), null);
 
     Assert.assertEquals(Collections.emptyList(), unusedSegments);
     Assert.assertEquals(2L, task.getNumBatchesProcessed());
